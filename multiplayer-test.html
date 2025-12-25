@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YGG Multiplayer Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/colyseus.js@0.15.14/dist/colyseus.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        
+        h1 {
+            color: #667eea;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+        
+        .section h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 600;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+        }
+        
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .status {
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border-left: 4px solid #17a2b8;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border-left: 4px solid #28a745;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border-left: 4px solid #dc3545;
+        }
+        
+        .status.waiting {
+            background: #fff3cd;
+            color: #856404;
+            border-left: 4px solid #ffc107;
+        }
+        
+        .players-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .player-card {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            border: 2px solid #667eea;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .player-card h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .player-card .stat {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .player-card .stat:last-child {
+            border-bottom: none;
+        }
+        
+        .player-card .stat-label {
+            color: #666;
+        }
+        
+        .player-card .stat-value {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .winner {
+            background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+            border-color: #fda085;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .log {
+            background: #1e1e1e;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 5px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        
+        .log-entry {
+            margin-bottom: 5px;
+        }
+        
+        .log-entry.error {
+            color: #ff6b6b;
+        }
+        
+        .log-entry.success {
+            color: #51cf66;
+        }
+        
+        .log-entry.info {
+            color: #74c0fc;
+        }
+        
+        .prize-pool {
+            text-align: center;
+            background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        
+        .prize-pool h2 {
+            color: #333;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+        }
+        
+        .prize-pool .amount {
+            font-size: 3em;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .roll-activity {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .roll-item {
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 4px solid #667eea;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .roll-item.my-roll {
+            border-left-color: #28a745;
+            background: #f0fff4;
+        }
+        
+        .roll-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .roll-player {
+            font-weight: bold;
+            color: #667eea;
+            font-size: 1.1em;
+        }
+        
+        .roll-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 8px;
+            font-size: 0.9em;
+        }
+        
+        .roll-detail {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .roll-detail-label {
+            color: #666;
+        }
+        
+        .roll-detail-value {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .avatar-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+        
+        .jackpot-indicator {
+            background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            animation: pulse 1s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 YGG Multiplayer Test</h1>
+        
+        <!-- Configuration Section -->
+        <div class="section">
+            <h2>⚙️ Configuration</h2>
+            <div class="form-group">
+                <label>Django Backend URL:</label>
+                <input type="text" id="backendUrl" value="http://127.0.0.1:8000" />
+            </div>
+            <div class="form-group">
+                <label>Auth Token:</label>
+                <input type="text" id="authToken" placeholder="Bearer token from Django login" />
+            </div>
+            <div class="form-group">
+                <label>Game ID:</label>
+                <input type="text" id="gameId" placeholder="e.g., 1" value="ab36078a-73e0-4441-b92f-02b04e9d8122" />
+            </div>
+            <div class="form-group">
+                <label>Entry Points Cost:</label>
+                <input type="number" id="entryPoints" value="10" min="0" />
+            </div>
+            <div class="form-group">
+                <label>Max Players:</label>
+                <select id="maxPlayers">
+                    <option value="2" selected>2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                </select>
+            </div>
+        </div>
+        
+        <!-- Initialize Section -->
+        <div class="section">
+            <h2>🚀 Initialize Match</h2>
+            <div id="initStatus"></div>
+            <button id="initBtn" onclick="initializeMultiplayer()">Initialize Multiplayer</button>
+        </div>
+        
+        <!-- Lobby Section -->
+        <div class="section" id="lobbySection" style="display: none;">
+            <h2>🏠 Lobby</h2>
+            <div id="lobbyStatus"></div>
+            <div class="prize-pool">
+                <h2>Prize Pool</h2>
+                <div class="amount" id="prizePoolAmount">0</div>
+            </div>
+            <div id="playersInfo" class="players-grid"></div>
+            <div class="controls">
+                <button id="readyBtn" onclick="markReady()">Mark Ready</button>
+                <button onclick="disconnectRoom()">Leave Room</button>
+            </div>
+        </div>
+        
+        <!-- Game Section -->
+        <div class="section" id="gameSection" style="display: none;">
+            <h2>🎲 Game In Progress</h2>
+            <div id="gameStatus"></div>
+            <div class="controls">
+                <button id="rollBtn" onclick="performRoll()">Roll Dice 🎲</button>
+            </div>
+            
+            <!-- Roll Activity Feed -->
+            <div class="roll-activity">
+                <h3>Recent Rolls</h3>
+                <div id="rollActivityFeed"></div>
+            </div>
+            
+            <div id="playersGame" class="players-grid"></div>
+        </div>
+        
+        <!-- Results Section -->
+        <div class="section" id="resultsSection" style="display: none;">
+            <h2>🏆 Match Results</h2>
+            <div id="resultsStatus"></div>
+            <div id="resultsPlayers" class="players-grid"></div>
+            <button onclick="location.reload()">New Match</button>
+        </div>
+        
+        <!-- Log Section -->
+        <div class="section">
+            <h2>📋 Event Log</h2>
+            <div id="log" class="log"></div>
+        </div>
+    </div>
+
+    <script>
+        let room = null;
+        let matchData = null;
+        let mySessionId = null;
+        
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            const timestamp = new Date().toLocaleTimeString();
+            entry.textContent = `[${timestamp}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(`[${type.toUpperCase()}]`, message);
+        }
+        
+        function showStatus(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.className = `status ${type}`;
+            element.innerHTML = message;
+            element.style.display = 'block';
+        }
+        
+        async function initializeMultiplayer() {
+            const backendUrl = document.getElementById('backendUrl').value;
+            const authToken = document.getElementById('authToken').value;
+            const gameId = document.getElementById('gameId').value;
+            const entryPoints = document.getElementById('entryPoints').value;
+            const maxPlayers = document.getElementById('maxPlayers').value;
+            
+            if (!authToken || !gameId) {
+                showStatus('initStatus', '❌ Please provide Auth Token and Game ID', 'error');
+                return;
+            }
+            
+            try {
+                log('Initializing multiplayer match...', 'info');
+                showStatus('initStatus', '⏳ Connecting to backend...', 'info');
+
+                const response = await fetch(`${backendUrl}/game/api/v1/multiplayer/${gameId}/initialize/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({
+                        multiplier: 1,
+                        max_players: parseInt(maxPlayers),
+                        entry_rolls_cost: 20,
+                        entry_points_cost: parseInt(entryPoints),
+                        free_rolls_per_player: 20
+                    })
+                });
+
+                console.log("this is response", response);
+
+                const respBody = await response.json();
+                if (!response.ok || respBody.success === false) {
+                    const msg = (respBody && (respBody.message || respBody.error || respBody.detail)) || 'Failed to initialize';
+                    throw new Error(msg);
+                }
+
+                matchData = respBody.result || respBody; // supports both wrapped and raw
+                log(`Match initialized: ${matchData.match_id}`, 'success');
+                log(`Prize pool: ${matchData.prize_pool_points} points`, 'info');
+                log(`Current players: ${matchData.current_players}/${matchData.max_players}`, 'info');
+                
+                showStatus('initStatus', '✅ Match initialized! Connecting to Colyseus...', 'success');
+                
+                await connectToColyseus();
+                
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showStatus('initStatus', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        async function connectToColyseus() {
+            try {
+                const ColyseusNS = window.Colyseus;
+                if (!ColyseusNS || typeof ColyseusNS.Client !== 'function') {
+                    throw new Error('Colyseus UMD not loaded or Client not available. Check CDN script.');
+                }
+                const client = new ColyseusNS.Client(matchData.colyseus_url);
+                
+                // Choose the correct room type defined on the server
+                let roomType = 'generic_game_room';
+                // if (matchData.colyseus_room_id && matchData.colyseus_room_id.includes('ygg_city')) {
+                //     roomType = 'ygg_city_room';
+                // }
+
+                log(`Connecting to room type: ${roomType} (logical id: ${matchData.colyseus_room_id})`, 'info');
+
+                // Pass full options so server can configure this match instance
+                room = await client.joinOrCreate(roomType, {
+                    token: matchData.token,
+                    matchRoomId: matchData.colyseus_room_id, // use provided logical room id as match key
+                    matchUUID: matchData.match_id,
+                    gameId: matchData.game_id,
+                    gameName: matchData.game_name || 'ygg_city',
+                    multiplier: matchData.multiplier,
+                    mode: matchData.mode,
+                    maxPlayers: matchData.max_players,
+                    entryRollsCost: matchData.entry_rolls_cost,
+                    entryPointsCost: matchData.entry_points_cost,
+                    prizePoolPoints: matchData.prize_pool_points,
+                    freeRollsPerPlayer: matchData.free_rolls,
+                });
+                
+                mySessionId = room.sessionId;
+                log(`Connected! Session ID: ${mySessionId}`, 'success');
+                
+                setupRoomListeners();
+                showLobby();
+                
+            } catch (error) {
+                log(`Colyseus connection error: ${error.message}`, 'error');
+                showStatus('initStatus', `❌ Failed to connect to Colyseus: ${error.message}`, 'error');
+            }
+        }
+        
+        function setupRoomListeners() {
+            room.onStateChange((state) => {
+                log(`State changed: ${state.status}`, 'info');
+                updateUI(state);
+            });
+            
+            room.onMessage("player_joined", (data) => {
+                log(`Player joined: ${data.username} (Seat ${data.seat})`, 'success');
+                updatePlayersDisplay();
+            });
+            
+            room.onMessage("player_ready", (data) => {
+                log(`Player ready: ${data.username}`, 'info');
+                updatePlayersDisplay();
+            });
+            
+            room.onMessage("game_started", (data) => {
+                log('🎮 GAME STARTED!', 'success');
+                log(`Prize pool: ${data.prizePoolPoints} points`, 'info');
+                log(`Max duration: ${data.maxDuration / 1000}s`, 'info');
+                showGame();
+            });
+            
+            room.onMessage("roll_result", (data) => {
+                // Display in roll activity feed
+                displayRollActivity(data);
+                
+                // Also log for debugging
+                log(`� ${data.username} rolled! Points: ${data.pointsEarnedThisMatch}`, 'info');
+                if (data.jackpot) {
+                    log(`🎰 JACKPOT! ${data.jackpotAmount} points!`, 'success');
+                }
+                
+                updatePlayersDisplay();
+            });
+            
+            room.onMessage("game_ended", (data) => {
+                log('🏁 GAME ENDED!', 'success');
+                log(`Winner: ${data.winner.username}`, 'success');
+                log(`Prize awarded: ${data.winner.prizePoolAwarded} points`, 'success');
+                showResults(data);
+            });
+            
+            room.onMessage("error", (data) => {
+                log(`Error: ${data.message}`, 'error');
+            });
+            
+            room.onLeave((code) => {
+                log(`Left room (code: ${code})`, 'info');
+            });
+        }
+        
+        function updateUI(state) {
+            if (state.status === 'waiting') {
+                updatePlayersDisplay();
+            } else if (state.status === 'in_progress') {
+                updatePlayersDisplay();
+            }
+        }
+        
+        function showLobby() {
+            document.getElementById('lobbySection').style.display = 'block';
+            document.getElementById('gameSection').style.display = 'none';
+            document.getElementById('resultsSection').style.display = 'none';
+            
+            showStatus('lobbyStatus', 
+                `⏳ Waiting for players... (${matchData.current_players}/${matchData.max_players})`, 
+                'waiting'
+            );
+            
+            document.getElementById('prizePoolAmount').textContent = matchData.prize_pool_points;
+            
+            // Display your avatar info
+            displayAvatarInfo();
+            
+            updatePlayersDisplay();
+        }
+        
+        function displayAvatarInfo() {
+            if (!matchData.avatar) return;
+            
+            const avatarDiv = document.getElementById('avatarInfo') || createAvatarInfoDiv();
+            avatarDiv.innerHTML = `
+                <h3>🎭 Your Avatar</h3>
+                <div class="stat">
+                    <span class="stat-label">Asset Key:</span>
+                    <span class="stat-value">${matchData.avatar.asset_key || 'N/A'}</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Rarity:</span>
+                    <span class="stat-value">${matchData.avatar.rarity || 'Common'}</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Movement:</span>
+                    <span class="stat-value">${matchData.avatar.movement || 'walk'}</span>
+                </div>
+            `;
+            
+            console.log('Your Avatar Details:', matchData.avatar);
+        }
+        
+        function createAvatarInfoDiv() {
+            const div = document.createElement('div');
+            div.id = 'avatarInfo';
+            div.className = 'player-card';
+            div.style.marginBottom = '20px';
+            div.style.backgroundColor = '#f0f8ff';
+            div.style.border = '2px solid #4CAF50';
+            const lobbySection = document.getElementById('lobbySection');
+            lobbySection.insertBefore(div, document.getElementById('playersInfo'));
+            return div;
+        }
+        
+        function showGame() {
+            document.getElementById('lobbySection').style.display = 'none';
+            document.getElementById('gameSection').style.display = 'block';
+            document.getElementById('resultsSection').style.display = 'none';
+            document.getElementById('readyBtn').disabled = true;
+            
+            const myPlayer = room.state.players.get(mySessionId);
+            showStatus('gameStatus', 
+                `🎮 Game in progress! You have ${myPlayer.freeRollsRemaining} free rolls`, 
+                'info'
+            );
+            
+            updatePlayersDisplay();
+        }
+        
+        function showResults(data) {
+            document.getElementById('lobbySection').style.display = 'none';
+            document.getElementById('gameSection').style.display = 'none';
+            document.getElementById('resultsSection').style.display = 'block';
+            
+            showStatus('resultsStatus', 
+                `🏆 Winner: ${data.winner.username}<br>` +
+                `💰 Prize: ${data.winner.prizePoolAwarded} points<br>` +
+                `⏱️ Duration: ${Math.round(data.duration / 1000)}s`, 
+                'success'
+            );
+            
+            const resultsDiv = document.getElementById('resultsPlayers');
+            resultsDiv.innerHTML = '';
+            
+            data.results.forEach((player, index) => {
+                const card = document.createElement('div');
+                card.className = `player-card ${player.user_id === data.winner.userId ? 'winner' : ''}`;
+                card.innerHTML = `
+                    <h3>${index + 1}. ${player.username} ${player.user_id === data.winner.userId ? '👑' : ''}</h3>
+                    <div class="stat">
+                        <span class="stat-label">Points Earned:</span>
+                        <span class="stat-value">${player.points_earned}</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Rolls Used:</span>
+                        <span class="stat-value">${player.free_rolls_used}</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Final Balance:</span>
+                        <span class="stat-value">${player.balance}</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Seat:</span>
+                        <span class="stat-value">${player.seat}</span>
+                    </div>
+                `;
+                resultsDiv.appendChild(card);
+            });
+        }
+        
+        function updatePlayersDisplay() {
+            if (!room || !room.state) return;
+            
+            const isGame = room.state.status === 'in_progress';
+            const targetDiv = isGame ? 'playersGame' : 'playersInfo';
+            const playersDiv = document.getElementById(targetDiv);
+            playersDiv.innerHTML = '';
+            
+            room.state.players.forEach((player, sessionId) => {
+                const card = document.createElement('div');
+                card.className = 'player-card';
+                
+                // Parse user game state and config
+                let userGameState = {};
+                let userGameConfig = {};
+                try {
+                    userGameState = JSON.parse(player.userGameState || '{}');
+                    userGameConfig = JSON.parse(player.userGameConfig || '{}');
+                } catch (e) {
+                    console.error('Error parsing player data:', e);
+                }
+                
+                let html = `
+                    <h3>${player.username} ${sessionId === mySessionId ? '(You)' : ''}</h3>
+                    <div class="stat">
+                        <span class="stat-label">Seat:</span>
+                        <span class="stat-value">${player.seat}</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Status:</span>
+                        <span class="stat-value">${player.ready ? '✅ Ready' : '⏳ Not Ready'}</span>
+                    </div>
+                `;
+                
+                // Avatar info
+                if (player.avatarAssetKey) {
+                    html += `
+                        <div class="stat">
+                            <span class="stat-label">🎭 Avatar:</span>
+                            <span class="stat-value">${player.avatarAssetKey}</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">✨ Rarity:</span>
+                            <span class="stat-value" style="color: ${getRarityColor(player.avatarRarity)}; font-weight: bold;">${player.avatarRarity}</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">🚶 Movement:</span>
+                            <span class="stat-value">${player.avatarMovement}</span>
+                        </div>
+                    `;
+                }
+                
+                if (isGame) {
+                    html += `
+                        <div class="stat">
+                            <span class="stat-label">Free Rolls:</span>
+                            <span class="stat-value">${player.freeRollsRemaining}/${room.state.freeRollsPerPlayer}</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Points Earned:</span>
+                            <span class="stat-value">${player.pointsEarnedThisMatch}</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Balance:</span>
+                            <span class="stat-value">${player.balance}</span>
+                        </div>
+                    `;
+                    
+                    // Game state info
+                    if (userGameState.game_state) {
+                        html += `
+                            <div class="stat">
+                                <span class="stat-label">Game State:</span>
+                                <span class="stat-value">${userGameState.game_state}</span>
+                            </div>
+                        `;
+                    }
+                    
+                    if (userGameState.current_position !== undefined) {
+                        html += `
+                            <div class="stat">
+                                <span class="stat-label">Position:</span>
+                                <span class="stat-value">${userGameState.current_position}</span>
+                            </div>
+                        `;
+                    }
+                    
+                    // Board info (show board size)
+                    if (userGameConfig.board) {
+                        const boardSize = Object.keys(userGameConfig.board).length;
+                        html += `
+                            <div class="stat">
+                                <span class="stat-label">Board Size:</span>
+                                <span class="stat-value">${boardSize} tiles</span>
+                            </div>
+                        `;
+                    }
+                }
+                
+                card.innerHTML = html;
+                playersDiv.appendChild(card);
+                
+                // Log detailed info for your own player
+                if (sessionId === mySessionId && isGame) {
+                    console.log('Your Game State:', userGameState);
+                    console.log('Your Board Config:', userGameConfig);
+                }
+            });
+            
+            if (isGame) {
+                const myPlayer = room.state.players.get(mySessionId);
+                document.getElementById('rollBtn').disabled = myPlayer.freeRollsRemaining <= 0;
+            }
+        }
+        
+        function markReady() {
+            if (!room) return;
+            room.send("player_ready");
+            document.getElementById('readyBtn').disabled = true;
+            log('Marked as ready', 'info');
+        }
+        
+        function performRoll() {
+            if (!room) return;
+            const myPlayer = room.state.players.get(mySessionId);
+            if (myPlayer.freeRollsRemaining <= 0) {
+                log('No free rolls remaining!', 'error');
+                return;
+            }
+            room.send("roll", {});
+            log('Rolling...', 'info');
+        }
+        
+        function getRarityColor(rarity) {
+            const rarityLower = (rarity || 'common').toLowerCase();
+            const colors = {
+                'common': '#9E9E9E',
+                'uncommon': '#4CAF50',
+                'rare': '#2196F3',
+                'epic': '#9C27B0',
+                'legendary': '#FF9800',
+                'mythic': '#F44336'
+            };
+            return colors[rarityLower] || colors['common'];
+        }
+        
+        function displayRollActivity(data) {
+            const feed = document.getElementById('rollActivityFeed');
+            if (!feed) return;
+            
+            const isMyRoll = data.sessionId === mySessionId;
+            const rollItem = document.createElement('div');
+            rollItem.className = `roll-item ${isMyRoll ? 'my-roll' : ''}`;
+            
+            // Rarity color
+            const rarityColors = {
+                'Common': '#9E9E9E',
+                'Uncommon': '#4CAF50',
+                'Rare': '#2196F3',
+                'Epic': '#9C27B0',
+                'Legendary': '#FF9800',
+                'Mythic': '#F44336'
+            };
+            const rarityColor = rarityColors[data.avatarRarity] || '#9E9E9E';
+            
+            let html = `
+                <div class="roll-header">
+                    <div class="roll-player">
+                        ${data.username} ${isMyRoll ? '(You)' : ''}
+                        ${data.jackpot ? '<span class="jackpot-indicator">🎰 JACKPOT!</span>' : ''}
+                    </div>
+                    <div style="font-size: 0.9em; color: #666;">
+                        ${new Date().toLocaleTimeString()}
+                    </div>
+                </div>
+                <div class="roll-details">
+            `;
+            
+            // Avatar info
+            if (data.avatarAssetKey) {
+                html += `
+                    <div class="roll-detail">
+                        <span class="roll-detail-label">🎭 Avatar:</span>
+                        <span class="avatar-badge" style="background: ${rarityColor}; color: white;">
+                            ${data.avatarAssetKey}
+                        </span>
+                    </div>
+                    <div class="roll-detail">
+                        <span class="roll-detail-label">Movement:</span>
+                        <span class="roll-detail-value">${data.avatarMovement}</span>
+                    </div>
+                `;
+            }
+            
+            // Game state info
+            if (data.userGameState) {
+                html += `
+                    <div class="roll-detail">
+                        <span class="roll-detail-label">📍 Position:</span>
+                        <span class="roll-detail-value">${data.userGameState.previous_position} → ${data.userGameState.current_position}</span>
+                    </div>
+                    <div class="roll-detail">
+                        <span class="roll-detail-label">🎲 Roll Value:</span>
+                        <span class="roll-detail-value">${data.userGameState.current_roll_value}</span>
+                    </div>
+                `;
+            }
+            
+            // Match stats
+            html += `
+                <div class="roll-detail">
+                    <span class="roll-detail-label">💰 Balance:</span>
+                    <span class="roll-detail-value">${data.balance}</span>
+                </div>
+                <div class="roll-detail">
+                    <span class="roll-detail-label">⭐ Points:</span>
+                    <span class="roll-detail-value">${data.pointsEarnedThisMatch}</span>
+                </div>
+                <div class="roll-detail">
+                    <span class="roll-detail-label">🎯 Rolls Left:</span>
+                    <span class="roll-detail-value">${data.freeRollsRemaining}</span>
+                </div>
+            `;
+            
+            if (data.jackpot) {
+                html += `
+                    <div class="roll-detail" style="grid-column: 1 / -1;">
+                        <span class="roll-detail-label">🎰 Jackpot:</span>
+                        <span class="roll-detail-value" style="color: #fda085; font-size: 1.2em;">
+                            ${data.jackpotAmount} points!
+                        </span>
+                    </div>
+                `;
+            }
+            
+            html += `</div>`;
+            rollItem.innerHTML = html;
+            
+            // Add to top of feed
+            feed.insertBefore(rollItem, feed.firstChild);
+            
+            // Keep only last 10 rolls
+            while (feed.children.length > 10) {
+                feed.removeChild(feed.lastChild);
+            }
+        }
+        
+        function disconnectRoom() {
+            if (room) {
+                room.leave();
+                log('Disconnected from room', 'info');
+            }
+            location.reload();
+        }
+        
+        log('Test client initialized. Ready to start!', 'success');
+    </script>
+</body>
+</html>
