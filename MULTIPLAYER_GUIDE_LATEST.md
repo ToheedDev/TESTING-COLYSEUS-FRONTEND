@@ -3,7 +3,6 @@
 ## Table of Contents
 - [Overview](#overview)
 - [Architecture](#architecture)
-- [Setup & Getting Started](#setup--getting-started)
 - [Integration Flow](#integration-flow)
 - [API Reference](#api-reference)
 - [State Synchronization](#state-synchronization)
