@@ -8,6 +8,7 @@
 - [State Synchronization](#state-synchronization)
 - [Avatar System](#avatar-system)
 - [Game State Management](#game-state-management)
+- [Multiplayer Items](#multiplayer-items)
 - [Event System](#event-system)
 ---
 
@@ -209,6 +210,48 @@ room.onMessage("game_ended", (data) => {
 room.onMessage("error", (data) => {
   console.error("Error:", data.message);
   showError(data.message);
+});
+
+// for multiplayer items
+room.onMessage("item_used", (data) => {
+  updateItemDisplay(null); // Clear item after use
+});
+
+room.onMessage("road_block_deployed", (data) => {
+  showNotification(`🚧 Road block deployed at position ${data.position}!`, "warning");
+});
+
+room.onMessage("road_block_hit", (data) => {
+  if (data.sessionId === room.sessionId) {
+    showNotification(`💥 You hit a road block! Stopped at position ${data.stoppedAt}`, "error");
+  } else {
+    showNotification(`💥 ${data.username} hit a road block!`, "info");
+  }
+});
+
+room.onMessage("player_slowed", (data) => {
+  const me = room.state.players.get(room.sessionId);
+  if (me && data.targetSeat === me.seat) {
+    showEffectIndicator("slow", data.duration);
+  }
+});
+
+room.onMessage("player_fast", (data) => {
+  if (data.sessionId === room.sessionId) {
+    showEffectIndicator("fast", data.duration);
+  }
+});
+
+room.onMessage("effect_cleared", (data) => {
+  const indicator = document.querySelector(".effect-indicator");
+  if (indicator) indicator.remove();
+});
+
+room.onMessage("player_back_to_lol", (data) => {
+});
+
+room.onMessage("cheating_roll_ready", (data) => {
+  showNotification(`🎲 Next roll will be ${data.rollRange.min}-${data.rollRange.max}!`, "success");
 });
 
 // Disconnection
@@ -516,7 +559,13 @@ const boardConfig = safeParseJSON(player.userGameConfig);
   jackpot_amount: 0,                 // Jackpot value
   free_spin_left: 0,                 // Free spins
   board_refresh: false,              // Board refreshed?
-  win_index: [10, 11, 12, 13]       // Winning tiles
+  win_index: [10, 11, 12, 13],      // Winning tiles
+  // Multiplayer items-related fields
+  road_block_hit: null,             // Info when a road block is hit on this move
+  auto_travel: null,                // Auto movement info (e.g. back to LOL)
+  active_item: null,                // Currently held item after this roll (if any)
+  active_effect: null,              // Active fast/slow effect data (if any)
+  cheating_roll: null               // Cheating roll config if armed for next roll
 }
 ```
 
@@ -580,6 +629,95 @@ In multiplayer:
 - Ensures fair gameplay with identical tile placement
 
 ---
+
+## Multiplayer Items
+
+Players can **collect** and **use** items that affect themselves, other players, or the board. This section only describes the client ↔ Colyseus contract you need to implement in the frontend.
+
+### Item Types
+
+The server can award any of the following item codes to a player:
+
+- `road_block` – Place a road block on the board that can stop players.
+- `slow` – Apply a slow effect to another player (e.g. slower animations).
+- `fast` – Apply a speed boost to your own avatar/animations.
+- `back_to_lol` – Teleport the player back to LOL corner (auto movement).
+- `cheating_roll` – Bias the next roll into one of two configured ranges.
+
+You should treat these as opaque codes and drive your UI behavior from them.
+
+### Messages: Client → Server
+
+These messages are sent via `room.send(type, payload)`:
+
+- **`use_item`**
+  - Sent when the player clicks "Use Item".
+  - Payload:
+    - `item_code`: one of the item codes listed above.
+    - `target_data` (optional): extra data for some items.
+      - For `cheating_roll`: `{ range: 1 | 2 }`.
+  - Examples:
+    - `room.send("use_item", { item_code: "fast" });`
+    - `room.send("use_item", { item_code: "cheating_roll", target_data: { range: 2 } });`
+
+- **`effect_expired`**
+  - Sent when a local timed effect (fast/slow) has finished according to your own timer.
+  - Payload: `{}`.
+
+### Messages: Server → Client
+
+- **`item_used`**
+  - Confirms an item was successfully consumed.
+  - Shape: `{ itemCode, effect }`.
+  - Action: clear your active item UI and apply any immediate local feedback.
+
+- **`road_block_deployed`**
+  - Notifies that a road block was placed on the board.
+  - Shape: `{ sessionId, username, position }`.
+  - Action: show a road-block marker on the given board tile.
+
+- **`player_slowed`**
+  - A player received a slow effect.
+  - Shape: `{ sessionId, username, targetSeat, targetName, duration, speedMultiplier }`.
+  - Action: apply slow visuals/timer to the target seat.
+
+- **`player_fast`**
+  - The local player (or another) received a fast effect.
+  - Shape: `{ sessionId, username, duration, speedMultiplier }`.
+  - Action: apply fast visuals/timer to that player.
+
+- **`cheating_roll_ready`**
+  - The next roll has been configured for a cheating roll.
+  - Shape: `{ selectedRange, rollRange: { min, max } }`.
+  - Action: show confirmation that the next roll is biased to this range.
+
+- **`effect_cleared`**
+  - A timed effect has been cleared.
+  - Shape: `{ sessionId, username, seat }`.
+  - Action: remove any fast/slow indicators from that player.
+
+Standard `error` messages will also be used when an item cannot be used (invalid state, no item, wrong payload, etc.). In all error cases, you should display a toast/modal and re-enable the relevant controls.
+
+### Room State Fields to Use
+
+Item-related information is also available from the synchronized room state:
+
+- `room.state.players` (map keyed by `sessionId`):
+  - `userGameState` (string) – stringified JSON game state; may contain `active_item`.
+  - `userGameConfig` (string) – board configuration (optional for items UI).
+  - `activeItem` (string) – stringified JSON of the current item held by that player, or empty.
+  - `activeEffect` (string) – stringified JSON for fast/slow effect, or empty.
+  - `effectExpiresAt` (number) – timestamp (ms) when local UI should treat the effect as expired.
+
+- `room.state.roadBlocks` (string):
+  - Stringified JSON array of road blocks: `[{ position, placedBy, placedBySeat }]`.
+  - Use this to render all active road blocks on the board.
+
+Typical frontend flow:
+
+- On every `roll_result` for the local player, inspect `data.userGameState` (or the corresponding `player.userGameState` from `room.state.players`) and show/hide the item card based on `active_item`.
+- When an item is used, wait for `item_used` before finally clearing the item UI.
+- For timed effects, start a local timer on `player_fast` / `player_slowed`, send `effect_expired` when it ends, and clear visuals on `effect_cleared` if present.
 
 ## Event System
 

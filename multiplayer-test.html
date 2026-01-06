@@ -318,6 +318,157 @@
             font-weight: bold;
             animation: pulse 1s infinite;
         }
+        
+        /* Multiplayer Items Styles */
+        .item-section {
+            background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+            padding: 20px;
+            border-radius: 15px;
+            margin: 20px 0;
+        }
+        
+        .item-section h3 {
+            color: #333;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        
+        .item-display {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .item-card {
+            background: white;
+            padding: 15px 25px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            min-width: 150px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .item-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+        }
+        
+        .item-card.has-item {
+            border: 3px solid #667eea;
+            cursor: pointer;
+        }
+        
+        .item-card.no-item {
+            opacity: 0.6;
+            border: 2px dashed #ccc;
+        }
+        
+        .item-icon {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .item-name {
+            font-weight: bold;
+            color: #333;
+            font-size: 1.1em;
+        }
+        
+        .item-effect {
+            font-size: 0.85em;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .use-item-btn {
+            margin-top: 10px;
+            background: #28a745;
+            padding: 8px 20px;
+            font-size: 14px;
+        }
+        
+        .use-item-btn:hover {
+            background: #218838;
+        }
+        
+        .effect-indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            border-radius: 10px;
+            font-weight: bold;
+            z-index: 1000;
+            animation: slideInRight 0.3s ease-out;
+        }
+        
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .effect-indicator.slow {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .effect-indicator.fast {
+            background: #28a745;
+            color: white;
+        }
+        
+        .road-block-marker {
+            display: inline-block;
+            background: #dc3545;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            margin-left: 5px;
+        }
+        
+        .cheating-roll-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .cheating-roll-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+        }
+        
+        .range-btn {
+            margin: 10px;
+            padding: 15px 30px;
+            font-size: 18px;
+        }
+        
+        .range-btn.range-1 {
+            background: #17a2b8;
+        }
+        
+        .range-btn.range-2 {
+            background: #fd7e14;
+        }
     </style>
 </head>
 <body>
@@ -379,6 +530,19 @@
         <div class="section" id="gameSection" style="display: none;">
             <h2>🎲 Game In Progress</h2>
             <div id="gameStatus"></div>
+            
+            <!-- Item Section -->
+            <div class="item-section" id="itemSection">
+                <h3>🎁 Your Item</h3>
+                <div class="item-display" id="itemDisplay">
+                    <div class="item-card no-item" id="activeItemCard">
+                        <div class="item-icon">❓</div>
+                        <div class="item-name">No Item</div>
+                        <div class="item-effect">Pass corner 14 to get an item!</div>
+                    </div>
+                </div>
+            </div>
+            
             <div class="controls">
                 <button id="rollBtn" onclick="performRoll()">Roll Dice 🎲</button>
             </div>
@@ -390,6 +554,17 @@
             </div>
             
             <div id="playersGame" class="players-grid"></div>
+        </div>
+        
+        <!-- Cheating Roll Modal -->
+        <div class="cheating-roll-modal" id="cheatingRollModal" style="display: none;">
+            <div class="cheating-roll-content">
+                <h2>🎲 Cheating Roll</h2>
+                <p>Select your roll range:</p>
+                <button class="range-btn range-1" id="cheatingRangeBtn1" onclick="selectCheatingRange(1)">Range 1</button>
+                <button class="range-btn range-2" id="cheatingRangeBtn2" onclick="selectCheatingRange(2)">Range 2</button>
+                <br><br>
+            </div>
         </div>
         
         <!-- Results Section -->
@@ -556,9 +731,14 @@
                 displayRollActivity(data);
                 
                 // Also log for debugging
-                log(`� ${data.username} rolled! Points: ${data.pointsEarnedThisMatch}`, 'info');
+                log(`🎲 ${data.username} rolled! Points: ${data.pointsEarnedThisMatch}`, 'info');
                 if (data.jackpot) {
                     log(`🎰 JACKPOT! ${data.jackpotAmount} points!`, 'success');
+                }
+                
+                // Check for new item (only for our own rolls)
+                if (data.sessionId === mySessionId && data.userGameState) {
+                    checkForNewItem(data.userGameState);
                 }
                 
                 updatePlayersDisplay();
@@ -573,6 +753,56 @@
             
             room.onMessage("error", (data) => {
                 log(`Error: ${data.message}`, 'error');
+            });
+            
+            // Item-related message handlers
+            room.onMessage("item_used", (data) => {
+                log(`✅ Item used: ${data.itemCode}`, 'success');
+                updateItemDisplay(null); // Clear item after use
+            });
+            
+            room.onMessage("road_block_deployed", (data) => {
+                log(`🚧 ${data.username} deployed a road block at position ${data.position}!`, 'info');
+                showNotification(`🚧 Road block deployed at position ${data.position}!`, 'warning');
+            });
+            
+            room.onMessage("road_block_hit", (data) => {
+                log(`💥 ${data.username} hit a road block at position ${data.blockPosition}! Stopped at ${data.stoppedAt}`, 'warning');
+                if (data.sessionId === mySessionId) {
+                    showNotification(`💥 You hit a road block! Stopped at position ${data.stoppedAt}`, 'error');
+                } else {
+                    showNotification(`💥 ${data.username} hit a road block!`, 'info');
+                }
+            });
+            
+            room.onMessage("player_slowed", (data) => {
+                log(`🐌 ${data.username} slowed ${data.targetName} for ${data.duration}s!`, 'info');
+                if (data.targetSeat === room.state.players.get(mySessionId)?.seat) {
+                    showEffectIndicator('slow', data.duration);
+                }
+            });
+            
+            room.onMessage("player_fast", (data) => {
+                log(`⚡ ${data.username} activated speed boost for ${data.duration}s!`, 'info');
+                if (data.sessionId === mySessionId) {
+                    showEffectIndicator('fast', data.duration);
+                }
+            });
+            
+            room.onMessage("effect_cleared", (data) => {
+                log(`✨ Effect cleared for ${data.username}`, 'info');
+                // Remove effect indicator from UI
+                const indicator = document.querySelector('.effect-indicator');
+                if (indicator) indicator.remove();
+            });
+            
+            room.onMessage("player_back_to_lol", (data) => {
+                log(`🏠 ${data.username} traveled back to LOL! (${data.fromPosition} → ${data.toPosition})`, 'info');
+            });
+            
+            room.onMessage("cheating_roll_ready", (data) => {
+                log(`🎲 Cheating roll ready! Range: ${data.selectedRange} (${data.rollRange.min}-${data.rollRange.max})`, 'success');
+                showNotification(`🎲 Next roll will be ${data.rollRange.min}-${data.rollRange.max}!`, 'success');
             });
             
             room.onLeave((code) => {
@@ -950,6 +1180,153 @@
                 log('Disconnected from room', 'info');
             }
             location.reload();
+        }
+        
+        // Item-related functions
+        const ITEM_CONFIG = {
+            road_block: { icon: '🚧', name: 'Road Block', effect: 'Deploys behind you, stops other players' },
+            slow: { icon: '🐌', name: 'Slow', effect: 'Slows a random opponent for 5s' },
+            fast: { icon: '⚡', name: 'Speed Boost', effect: 'Speeds you up for 5s' },
+            back_to_lol: { icon: '🏠', name: 'Back to LOL', effect: 'Instantly travel to LOL corner' },
+            cheating_roll: { icon: '🎲', name: 'Cheating Roll', effect: 'Choose your roll range!' }
+        };
+        
+        let currentActiveItem = null;
+        
+        function updateItemDisplay(item) {
+            currentActiveItem = item;
+            const card = document.getElementById('activeItemCard');
+            
+            if (!item) {
+                card.className = 'item-card no-item';
+                card.innerHTML = `
+                    <div class="item-icon">❓</div>
+                    <div class="item-name">No Item</div>
+                    <div class="item-effect">Pass corner 14 to get an item!</div>
+                `;
+                return;
+            }
+            
+            const config = ITEM_CONFIG[item.code] || { icon: '🎁', name: item.name, effect: 'Unknown effect' };
+            card.className = 'item-card has-item';
+            card.innerHTML = `
+                <div class="item-icon">${config.icon}</div>
+                <div class="item-name">${config.name}</div>
+                <div class="item-effect">${config.effect}</div>
+                <button class="use-item-btn" onclick="useItem('${item.code}')">Use Item</button>
+            `;
+        }
+        
+        function useItem(itemCode) {
+            if (!room || !currentActiveItem) {
+                log('No item to use!', 'error');
+                return;
+            }
+            
+            // Special handling for cheating roll - show modal
+            if (itemCode === 'cheating_roll') {
+                // Dynamically set range labels from active item's effects.ranges
+                try {
+                    const ranges = currentActiveItem && currentActiveItem.effects && currentActiveItem.effects.ranges;
+                    if (ranges) {
+                        const r1 = ranges["1"];
+                        const r2 = ranges["2"];
+                        const btn1 = document.getElementById('cheatingRangeBtn1');
+                        const btn2 = document.getElementById('cheatingRangeBtn2');
+
+                        if (btn1 && r1) {
+                            btn1.textContent = `Range 1 (${r1.min}-${r1.max})`;
+                        }
+                        if (btn2 && r2) {
+                            btn2.textContent = `Range 2 (${r2.min}-${r2.max})`;
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error setting cheating roll ranges from active item:', e);
+                }
+
+                document.getElementById('cheatingRollModal').style.display = 'flex';
+                return;
+            }
+            
+            // Send item use message
+            room.send("use_item", {
+                item_code: itemCode,
+                target_data: {}
+            });
+            log(`Using item: ${itemCode}...`, 'info');
+        }
+        
+        function selectCheatingRange(range) {
+            closeCheatingModal();
+            room.send("use_item", {
+                item_code: 'cheating_roll',
+                target_data: { range: range }
+            });
+            log(`Using cheating roll with range ${range}...`, 'info');
+        }
+        
+        function closeCheatingModal() {
+            document.getElementById('cheatingRollModal').style.display = 'none';
+        }
+        
+        let effectTimer = null;
+        
+        function showEffectIndicator(type, duration) {
+            // Clear any existing timer
+            if (effectTimer) {
+                clearTimeout(effectTimer);
+                effectTimer = null;
+            }
+            
+            // Remove any existing indicator
+            const existing = document.querySelector('.effect-indicator');
+            if (existing) existing.remove();
+            
+            const indicator = document.createElement('div');
+            indicator.className = `effect-indicator ${type}`;
+            indicator.innerHTML = type === 'slow' 
+                ? `🐌 SLOWED! (${duration}s)` 
+                : `⚡ SPEED BOOST! (${duration}s)`;
+            document.body.appendChild(indicator);
+            
+            // Start countdown timer and notify when expired
+            effectTimer = setTimeout(() => {
+                // Remove UI indicator
+                indicator.remove();
+                
+                // Notify Colyseus that effect has expired
+                if (room) {
+                    room.send('effect_expired', {});
+                    log(`⏱️ ${type} effect expired`, 'info');
+                }
+            }, duration * 1000);
+        }
+        
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `status ${type}`;
+            notification.style.position = 'fixed';
+            notification.style.top = '80px';
+            notification.style.right = '20px';
+            notification.style.zIndex = '999';
+            notification.style.animation = 'slideInRight 0.3s ease-out';
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+        
+        // Check for item in roll results
+        function checkForNewItem(userGameState) {
+            if (userGameState && userGameState.active_item) {
+                const item = userGameState.active_item;
+                log(`🎁 Got new item: ${item.name}!`, 'success');
+                updateItemDisplay(item);
+                showNotification(`🎁 You got: ${item.name}!`, 'success');
+            }
         }
         
         log('Test client initialized. Ready to start!', 'success');
