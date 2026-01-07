@@ -6,7 +6,6 @@
 - [Integration Flow](#integration-flow)
 - [API Reference](#api-reference)
 - [State Synchronization](#state-synchronization)
-- [Avatar System](#avatar-system)
 - [Game State Management](#game-state-management)
 - [Multiplayer Items](#multiplayer-items)
 - [Event System](#event-system)
