@@ -232,6 +232,65 @@
             text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
         }
         
+        .timer-display {
+            text-align: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            border-radius: 15px;
+            margin: 20px 0;
+            color: white;
+        }
+        
+        .timer-display h3 {
+            color: white;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        
+        .timer-circle {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 15px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .timer-circle::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: conic-gradient(from 0deg, #28a745 0deg, #28a745 var(--progress, 0deg), transparent var(--progress, 0deg));
+            transition: --progress 1s linear;
+        }
+        
+        .timer-number {
+            font-size: 2.5em;
+            font-weight: bold;
+            z-index: 1;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        
+        .timer-label {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .timer-display.expired {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            animation: pulse 1s infinite;
+        }
+        
         .roll-activity {
             background: #f8f9fa;
             padding: 15px;
@@ -491,17 +550,15 @@
                 <input type="text" id="gameId" placeholder="e.g., 1" value="ab36078a-73e0-4441-b92f-02b04e9d8122" />
             </div>
             <div class="form-group">
-                <label>Entry Points Cost:</label>
-                <input type="number" id="entryPoints" value="10" min="0" />
-            </div>
-            <div class="form-group">
-                <label>Max Players:</label>
-                <select id="maxPlayers">
-                    <option value="2" selected>2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
+                <label>Multiplier:</label>
+                <select id="multiplier">
+                    <option value="1" selected>1x</option>
+                    <option value="2">2x</option>
+                    <option value="5">5x</option>
+                    <option value="10">10x</option>
                 </select>
             </div>
+            <p><small><em>Note: Entry costs are configured per game. The game will start automatically when it fills or after 30 seconds with 2+ players.</em></small></p>
         </div>
         
         <!-- Initialize Section -->
@@ -515,13 +572,22 @@
         <div class="section" id="lobbySection" style="display: none;">
             <h2>🏠 Lobby</h2>
             <div id="lobbyStatus"></div>
+            
+            <!-- Timer Display -->
+            <div class="timer-display" id="timerDisplay" style="display: none;">
+                <h3>⏰ Game Starting Timer</h3>
+                <div class="timer-circle" id="timerCircle">
+                    <div class="timer-number" id="timerNumber">30</div>
+                </div>
+                <div class="timer-label" id="timerLabel">Waiting for more players...</div>
+            </div>
+            
             <div class="prize-pool">
                 <h2>Prize Pool</h2>
                 <div class="amount" id="prizePoolAmount">0</div>
             </div>
             <div id="playersInfo" class="players-grid"></div>
             <div class="controls">
-                <button id="readyBtn" onclick="markReady()">Mark Ready</button>
                 <button onclick="disconnectRoom()">Leave Room</button>
             </div>
         </div>
@@ -530,6 +596,15 @@
         <div class="section" id="gameSection" style="display: none;">
             <h2>🎲 Game In Progress</h2>
             <div id="gameStatus"></div>
+            
+            <!-- In-Game Timer Display -->
+            <div class="timer-display" id="gameTimerDisplay" style="display: none;">
+                <h3>⏱️ Match Timer</h3>
+                <div class="timer-circle" id="gameTimerCircle">
+                    <div class="timer-number" id="gameTimerNumber">0</div>
+                </div>
+                <div class="timer-label" id="gameTimerLabel">Time remaining</div>
+            </div>
             
             <!-- Item Section -->
             <div class="item-section" id="itemSection">
@@ -586,6 +661,10 @@
         let room = null;
         let matchData = null;
         let mySessionId = null;
+        let countdownInterval = null;
+        let timeRemaining = 0;
+        let gameCountdownInterval = null;
+        let gameTimeRemaining = 0;
         
         function log(message, type = 'info') {
             const logDiv = document.getElementById('log');
@@ -609,8 +688,7 @@
             const backendUrl = document.getElementById('backendUrl').value;
             const authToken = document.getElementById('authToken').value;
             const gameId = document.getElementById('gameId').value;
-            const entryPoints = document.getElementById('entryPoints').value;
-            const maxPlayers = document.getElementById('maxPlayers').value;
+            const multiplier = document.getElementById('multiplier').value;
             
             if (!authToken || !gameId) {
                 showStatus('initStatus', '❌ Please provide Auth Token and Game ID', 'error');
@@ -621,19 +699,11 @@
                 log('Initializing multiplayer match...', 'info');
                 showStatus('initStatus', '⏳ Connecting to backend...', 'info');
 
-                const response = await fetch(`${backendUrl}/game/api/v1/multiplayer/${gameId}/initialize/`, {
-                    method: 'POST',
+                const response = await fetch(`${backendUrl}/game/api/v1/multiplayer/${gameId}/initialize/?multiplier=${multiplier}`, {
+                    method: 'GET',
                     headers: {
-                        'Content-Type': 'application/json',
                         'Authorization': `Bearer ${authToken}`
-                    },
-                    body: JSON.stringify({
-                        multiplier: 1,
-                        max_players: parseInt(maxPlayers),
-                        entry_rolls_cost: 20,
-                        entry_points_cost: parseInt(entryPoints),
-                        free_rolls_per_player: 20
-                    })
+                    }
                 });
 
                 console.log("this is response", response);
@@ -647,7 +717,7 @@
                 matchData = respBody.result || respBody; // supports both wrapped and raw
                 log(`Match initialized: ${matchData.match_id}`, 'success');
                 log(`Prize pool: ${matchData.prize_pool_points} points`, 'info');
-                log(`Current players: ${matchData.current_players}/${matchData.max_players}`, 'info');
+                log(`Current players: ${matchData.current_players}`, 'info');
                 
                 showStatus('initStatus', '✅ Match initialized! Connecting to Colyseus...', 'success');
                 
@@ -684,7 +754,6 @@
                     gameName: matchData.game_name || 'ygg_city',
                     multiplier: matchData.multiplier,
                     mode: matchData.mode,
-                    maxPlayers: matchData.max_players,
                     entryRollsCost: matchData.entry_rolls_cost,
                     entryPointsCost: matchData.entry_points_cost,
                     prizePoolPoints: matchData.prize_pool_points,
@@ -696,6 +765,8 @@
                 
                 setupRoomListeners();
                 showLobby();
+                // Request current waiting timer in case we missed the initial broadcast
+                try { room.send('request_waiting_timer'); } catch (e) { /* no-op */ }
                 
             } catch (error) {
                 log(`Colyseus connection error: ${error.message}`, 'error');
@@ -706,11 +777,25 @@
         function setupRoomListeners() {
             room.onStateChange((state) => {
                 log(`State changed: ${state.status}`, 'info');
+                // Keep prize pool in sync from authoritative room state
+                try {
+                    if (state && typeof state.prizePoolPoints !== 'undefined') {
+                        const prizeEl = document.getElementById('prizePoolAmount');
+                        if (prizeEl) prizeEl.textContent = state.prizePoolPoints;
+                    }
+                } catch (e) { /* no-op */ }
                 updateUI(state);
             });
             
             room.onMessage("player_joined", (data) => {
                 log(`Player joined: ${data.username} (Seat ${data.seat})`, 'success');
+                // Update players and prize pool immediately on join
+                try {
+                    const prizeEl = document.getElementById('prizePoolAmount');
+                    if (prizeEl && room && room.state) {
+                        prizeEl.textContent = room.state.prizePoolPoints;
+                    }
+                } catch (e) { /* no-op */ }
                 updatePlayersDisplay();
             });
             
@@ -724,6 +809,16 @@
                 log(`Prize pool: ${data.prizePoolPoints} points`, 'info');
                 log(`Max duration: ${data.maxDuration / 1000}s`, 'info');
                 showGame();
+                const totalSeconds = Math.max(0, Math.ceil((data.maxDuration || 0) / 1000));
+                if (totalSeconds > 0) {
+                    startGameTimer(totalSeconds);
+                }
+            });
+            
+            // Late joiners can receive current remaining duration (seconds)
+            room.onMessage("game_timer_started", (data) => {
+                const secs = Math.max(0, parseInt(data.duration || 0, 10));
+                if (secs > 0) startGameTimer(secs);
             });
             
             room.onMessage("roll_result", (data) => {
@@ -805,6 +900,11 @@
                 showNotification(`🎲 Next roll will be ${data.rollRange.min}-${data.rollRange.max}!`, 'success');
             });
             
+            room.onMessage("waiting_timer_started", (data) => {
+                log(`⏰ 30-second timer started! Current players: ${data.currentPlayers}`, 'info');
+                startCountdownTimer(data.duration, data.currentPlayers);
+            });
+            
             room.onLeave((code) => {
                 log(`Left room (code: ${code})`, 'info');
             });
@@ -824,7 +924,7 @@
             document.getElementById('resultsSection').style.display = 'none';
             
             showStatus('lobbyStatus', 
-                `⏳ Waiting for players... (${matchData.current_players}/${matchData.max_players})`, 
+                `⏳ Waiting for players... (${matchData.current_players})`, 
                 'waiting'
             );
             
@@ -848,11 +948,11 @@
                 </div>
                 <div class="stat">
                     <span class="stat-label">Rarity:</span>
-                    <span class="stat-value">${matchData.avatar.rarity || 'Common'}</span>
+                    <span class="stat-value">${matchData.avatar.rarity || 'N/A'}</span>
                 </div>
                 <div class="stat">
                     <span class="stat-label">Movement:</span>
-                    <span class="stat-value">${matchData.avatar.movement || 'walk'}</span>
+                    <span class="stat-value">${matchData.avatar.movement || 'N/A'}</span>
                 </div>
             `;
             
@@ -875,7 +975,9 @@
             document.getElementById('lobbySection').style.display = 'none';
             document.getElementById('gameSection').style.display = 'block';
             document.getElementById('resultsSection').style.display = 'none';
-            document.getElementById('readyBtn').disabled = true;
+            
+            // Hide timer when game starts
+            stopCountdownTimer();
             
             const myPlayer = room.state.players.get(mySessionId);
             showStatus('gameStatus', 
@@ -884,6 +986,8 @@
             );
             
             updatePlayersDisplay();
+            // Ask server for current game timer if already in progress
+            try { room.send('request_game_timer'); } catch (e) { /* no-op */ }
         }
         
         function showResults(data) {
@@ -1042,12 +1146,7 @@
             }
         }
         
-        function markReady() {
-            if (!room) return;
-            room.send("player_ready");
-            document.getElementById('readyBtn').disabled = true;
-            log('Marked as ready', 'info');
-        }
+        // Players are auto-ready on join; no manual ready action
         
         function performRoll() {
             if (!room) return;
@@ -1327,6 +1426,112 @@
                 updateItemDisplay(item);
                 showNotification(`🎁 You got: ${item.name}!`, 'success');
             }
+        }
+        
+        // Timer functions
+        function startCountdownTimer(duration, currentPlayers, maxPlayers) {
+            // Stop any existing timer
+            stopCountdownTimer();
+            
+            // Show timer display
+            const timerDisplay = document.getElementById('timerDisplay');
+            const timerNumber = document.getElementById('timerNumber');
+            const timerLabel = document.getElementById('timerLabel');
+            const timerCircle = document.getElementById('timerCircle');
+            
+            timerDisplay.style.display = 'block';
+            timerDisplay.classList.remove('expired');
+            
+            timeRemaining = duration;
+            const totalDuration = duration;
+            
+            // Update timer label
+            timerLabel.textContent = `Game starts with ${currentPlayers}+ players or when timer expires`;
+            
+            // Update timer immediately
+            updateTimerDisplay();
+            
+            // Start countdown
+            countdownInterval = setInterval(() => {
+                timeRemaining--;
+                updateTimerDisplay();
+                
+                // Calculate progress (0-360 degrees)
+                const progress = ((totalDuration - timeRemaining) / totalDuration) * 360;
+                timerCircle.style.setProperty('--progress', `${progress}deg`);
+                
+                if (timeRemaining <= 0) {
+                    // Timer expired
+                    stopCountdownTimer();
+                    timerDisplay.classList.add('expired');
+                    timerLabel.textContent = 'Time expired! Starting game...';
+                    log('⏰ Timer expired! Game should start soon...', 'info');
+                }
+            }, 1000);
+        }
+        
+        function updateTimerDisplay() {
+            const timerNumber = document.getElementById('timerNumber');
+            timerNumber.textContent = Math.max(0, timeRemaining);
+            
+            // Change color as time runs out
+            if (timeRemaining <= 10) {
+                timerNumber.style.color = '#ff6b6b';
+            } else if (timeRemaining <= 20) {
+                timerNumber.style.color = '#ffd93d';
+            } else {
+                timerNumber.style.color = 'white';
+            }
+        }
+        
+        function stopCountdownTimer() {
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
+            
+            // Hide timer display
+            const timerDisplay = document.getElementById('timerDisplay');
+            timerDisplay.style.display = 'none';
+            timeRemaining = 0;
+        }
+        
+        // In-game timer functions
+        function startGameTimer(durationSeconds) {
+            stopGameTimer();
+            const display = document.getElementById('gameTimerDisplay');
+            const number = document.getElementById('gameTimerNumber');
+            const circle = document.getElementById('gameTimerCircle');
+            display.style.display = 'block';
+            gameTimeRemaining = durationSeconds;
+            const total = durationSeconds;
+            updateGameTimerDisplay();
+            gameCountdownInterval = setInterval(() => {
+                gameTimeRemaining--;
+                updateGameTimerDisplay();
+                const progress = ((total - gameTimeRemaining) / total) * 360;
+                circle.style.setProperty('--progress', `${progress}deg`);
+                if (gameTimeRemaining <= 0) {
+                    stopGameTimer();
+                    log('⏰ Match timer ended', 'info');
+                }
+            }, 1000);
+        }
+        function updateGameTimerDisplay() {
+            const number = document.getElementById('gameTimerNumber');
+            number.textContent = Math.max(0, gameTimeRemaining);
+            if (gameTimeRemaining <= 10) number.style.color = '#ff6b6b';
+            else if (gameTimeRemaining <= 60) number.style.color = '#ffd93d';
+            else number.style.color = 'white';
+        }
+        function stopGameTimer() {
+            if (gameCountdownInterval) {
+                clearInterval(gameCountdownInterval);
+                gameCountdownInterval = null;
+            }
+            const display = document.getElementById('gameTimerDisplay');
+            if (display) display.style.display = 'none';
+            gameTimeRemaining = 0;
         }
         
         log('Test client initialized. Ready to start!', 'success');

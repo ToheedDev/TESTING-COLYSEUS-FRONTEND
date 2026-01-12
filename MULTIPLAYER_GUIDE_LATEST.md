@@ -24,11 +24,14 @@ The YGG Games multiplayer system enables real-time competitive gameplay where mu
 - ✅ Simultaneous play (non-turn-based)
 - ✅ Prize pool system with winner-takes-all rewards
 - ✅ Free rolls per player (doesn't consume wallet rolls)
-- ✅ Match time limits (default: 10 minutes)
+- ✅ Match time limits (defaults configured per room)
 - ✅ Points-based winner determination
 - ✅ Avatar synchronization (asset, rarity, movement)
+- ✅ Waiting room timer (30s): starts on first join; starts game on expiry if 2–3 players; starts immediately at 4 players
+- ✅ In-game countdown timer visible to every player (and late joiners)
 - ✅ Complete game state storage per player
 - ✅ Board configuration sharing
+- ✅ Prize pool synchronization across all clients
 
 ---
 
@@ -71,21 +74,18 @@ The YGG Games multiplayer system enables real-time competitive gameplay where mu
 
 ### Phase 1: Initialize Match
 
-**Endpoint:** `POST /game/api/v1/multiplayer/{game_id}/initialize/`
+**Endpoint:** `GET /game/api/v1/multiplayer/{game_id}/initialize/?multiplier={n}`
 
 ```javascript
-const response = await fetch(`${DJANGO_URL}/game/api/v1/multiplayer/${gameId}/initialize/`, {
-  method: 'POST',
-  headers: {
-    'Authorization': `Bearer ${authToken}`,
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    "multiplier": 1,
-    "max_players": 2, // 3, 4
-    "entry_points_cost": 10,
-  })
-});
+const response = await fetch(
+  `${DJANGO_URL}/game/api/v1/multiplayer/${gameId}/initialize/?multiplier=${multiplier}`,
+  {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${authToken}`
+    }
+  }
+);
 
 const data = await response.json();
 ```
@@ -116,15 +116,30 @@ const data = await response.json();
     "match_id": "match-uuid",
     "game_id": "game-uuid",
     "game_name": "ygg_city",
-    "entry_rolls_cost": 20,
-    "entry_points_cost": 10,
+    "entry_rolls_cost": 20,           // from Multiplayer Game Configuration
+    "entry_points_cost": 100,         // from Multiplayer Game Configuration
     "prize_pool_points": 10,
     "free_rolls": 20,
     "current_players": 1,
-    "max_players": 2
+    "max_players": 4                   // internal cap; matchmaking uses timer logic
   }
 }
 ```
+
+### Avatar Visibility for All Players
+
+Avatars are synchronized through the room's PlayerState. The server populates each player's avatar fields during `onJoin` using data returned from Django's internal auth (`/game/api/v1/multiplayer/internal/auth/`). No avatar data needs to be sent from the client in the join payload.
+
+Frontend rendering (already present in the sample UI):
+
+```javascript
+room.state.players.forEach((player) => {
+  if (player.avatarAssetKey) {
+    // show avatar asset key, rarity (with color), and movement
+  }
+});
+```
+
 
 **What Happens:**
 1. Django validates user has enough rolls/points
@@ -149,7 +164,6 @@ const room = await client.joinOrCreate('generic_game_room', {
   gameName: matchData.game_name,
   multiplier: matchData.multiplier,
   mode: matchData.mode,
-  maxPlayers: matchData.max_players,
   entryRollsCost: matchData.entry_rolls_cost,
   entryPointsCost: matchData.entry_points_cost,
   prizePoolPoints: matchData.prize_pool_points,
@@ -190,6 +204,25 @@ room.onMessage("player_ready", (data) => {
 room.onMessage("game_started", (data) => {
   console.log("Game started! Prize pool:", data.prizePoolPoints);
   showGameInterface();
+});
+
+// Waiting timer (lobby): broadcast when first player joins, or on request
+room.onMessage("waiting_timer_started", (data) => {
+  // data = { duration: seconds_remaining, currentPlayers }
+  showLobbyTimer(data.duration, data.currentPlayers);
+});
+
+// In-game timer (after game starts), also sent for late joiners on request
+room.onMessage("game_timer_started", (data) => {
+  // data = { duration: seconds_remaining }
+  showInGameTimer(data.duration);
+});
+
+// Prize pool updates (authoritative via state sync)
+room.onStateChange((state) => {
+  if (typeof state.prizePoolPoints !== 'undefined') {
+    updatePrizePool(state.prizePoolPoints); // update UI element
+  }
 });
 
 // Roll result
@@ -262,25 +295,21 @@ room.onLeave((code) => {
 
 ### Phase 4: Lobby (Waiting for Players)
 
+Players are auto-ready upon joining; no manual "Ready" step. Matchmaking uses a timer-based flow:
+
+- First player joining starts a 30s lobby timer
+- If 4 players join at any time, the game starts immediately
+- If 2–3 players are present when the 30s expires, the game starts
+- If fewer than 2 players are present at expiry, the room stays open; timer restarts when the next player joins
+
+Client helpers:
+
 ```javascript
-// Mark as ready
-function markReady() {
-  room.send("player_ready");
-}
-
-// Display lobby state
-function updateLobby() {
-  const state = room.state;
-  console.log(`Players: ${state.players.size}/${state.maxPlayers}`);
-  console.log(`Prize Pool: ${state.prizePoolPoints} points`);
-  
-  state.players.forEach((player, sessionId) => {
-    console.log(`- ${player.username} ${player.ready ? '✓' : '⏳'}`);
-  });
-}
+// After joining and setting up listeners, request current timers in case you missed broadcasts
+room.send('request_waiting_timer');
+// After entering the game view
+room.send('request_game_timer');
 ```
-
-**Auto-start:** Game starts when ALL players mark ready
 
 ### Phase 5: Gameplay (In Progress)
 
@@ -349,15 +378,8 @@ room.onMessage("game_ended", (data) => {
 
 #### Initialize Multiplayer Match
 ```
-POST /game/api/v1/multiplayer/{game_id}/initialize/
+GET /game/api/v1/multiplayer/{game_id}/initialize/?multiplier={n}
 Authorization: Bearer {token}
-Content-Type: application/json
-
-{
-  "multiplier": 1,
-  "max_players": 2,
-  "entry_points_cost": 10,
-}
 ```
 
 
@@ -365,10 +387,7 @@ Content-Type: application/json
 
 #### FROM Client TO Colyseus Server
 
-**Player Ready:**
-```javascript
-room.send("player_ready");
-```
+// No manual readiness required – players are auto-ready on join
 
 **Roll Action:**
 ```javascript
@@ -394,6 +413,21 @@ room.send("roll", {});
   prizePoolPoints: 20,
   freeRollsPerPlayer: 20,
   maxDuration: 600000
+}
+```
+
+**waiting_timer_started:**
+```javascript
+{
+  duration: 30,            // seconds remaining
+  currentPlayers: 2
+}
+```
+
+**game_timer_started:**
+```javascript
+{
+  duration: 520            // seconds remaining
 }
 ```
 
@@ -446,7 +480,7 @@ room.state = {
   gameId: "uuid",
   gameName: "ygg_city",
   status: "waiting", // or "in_progress" or "finished"
-  maxPlayers: 2,
+  maxPlayers: 4,
   entryRollsCost: 20,
   entryPointsCost: 10,
   prizePoolPoints: 20,
@@ -469,7 +503,7 @@ playerState = {
   userGameStateId: "uuid",
   seat: 1,
   connected: true,
-  ready: false,
+  ready: true,
   freeRollsUsed: 5,
   freeRollsRemaining: 15,
   pointsEarnedThisMatch: 250,
