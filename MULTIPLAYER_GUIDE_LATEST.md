@@ -9,6 +9,7 @@
 - [Game State Management](#game-state-management)
 - [Multiplayer Items](#multiplayer-items)
 - [Event System](#event-system)
+ - [Bots](#bots)
 ---
 
 ## Overview
@@ -775,5 +776,46 @@ room.state.players.onChange = (player, sessionId) => {
   console.log(`${player.username} updated`);
 };
 ```
+
+## Bots
+
+The system can add a single, system-generated bot to start matches when only one human is present.
+
+### When a bot is added
+- If exactly 1 human is waiting in the lobby, the server schedules a bot to join 1 second before the lobby timer ends.
+- If 2 or more humans join before that time, no bot is added.
+
+### Bot identity and avatar
+- Appears as a regular player in room state with a fixed username (company wallet) for balance/roll attribution.
+- Uses default Cubie avatar: asset `cubie_common_walk`, rarity `common`, movement `walk`.
+
+### Bot events (client)
+- Room emits `bot_added` when the bot joins:
+  ```json
+  {
+    "botName": "0xdd1e4dB59e41b3234ABd48b3d55d1c6f4448812C",
+    "botSeat": 2,
+    "currentPlayers": 2,
+    "prizePool": 20
+  }
+  ```
+- Update your UI similarly to a real player (presence, prize pool, lists).
+
+### Bot behavior in match
+- After game start, the bot auto-rolls repeatedly.
+- Next roll delay is driven by the last dice value: delaySeconds = `current_roll_value + 1`.
+- If the roll value isn’t available, it falls back to a random 3–5 seconds.
+- About 1 second after rolling, the bot may attempt to use its item (if any).
+
+### Bot item usage
+- Reads its current `active_item` from `userGameState` (string or object with `code`).
+- 70% chance to use the item when considered.
+- For offensive items requiring targets (e.g., `slow_effect`, `road_block`), the bot selects a random opponent and includes `target_player_id` / `target_seat` in `target_data`.
+- Server confirms with `item_used` or sends an `error` message if invalid.
+
+### Limitations
+- Only one bot is added, and only when there is exactly one human.
+- Bot logic runs server-side; it’s not a real client connection.
+- Bot stops acting when out of free rolls or when the match ends.
 
 ---

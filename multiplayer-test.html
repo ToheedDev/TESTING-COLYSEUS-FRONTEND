@@ -904,6 +904,22 @@
                 log(`⏰ 30-second timer started! Current players: ${data.currentPlayers}`, 'info');
                 startCountdownTimer(data.duration, data.currentPlayers);
             });
+
+            // Bot-specific event handlers
+            room.onMessage("bot_added", (data) => {
+                log(`🤖 Bot ${data.botName} joined the match! (Seat ${data.botSeat})`, 'success');
+                log(`💰 Prize pool updated: ${data.prizePool} points`, 'info');
+                
+                // Update the UI to show bot
+                showNotification(`🤖 Bot ${data.botName} joined the game!`, 'info');
+                
+                // Update prize pool display
+                const prizeEl = document.getElementById('prizePoolAmount');
+                if (prizeEl) prizeEl.textContent = data.prizePool;
+                
+                // Refresh players display
+                updatePlayersDisplay();
+            });
             
             room.onLeave((code) => {
                 log(`Left room (code: ${code})`, 'info');
@@ -979,9 +995,17 @@
             // Hide timer when game starts
             stopCountdownTimer();
             
-            const myPlayer = room.state.players.get(mySessionId);
+            let myPlayer = null;
+            if (room && room.state && room.state.players) {
+                const players = room.state.players;
+                if (typeof players.get === 'function') {
+                    myPlayer = players.get(mySessionId);
+                } else if (typeof players === 'object') {
+                    myPlayer = players[mySessionId] || null;
+                }
+            }
             showStatus('gameStatus', 
-                `🎮 Game in progress! You have ${myPlayer.freeRollsRemaining} free rolls`, 
+                `🎮 Game in progress! You have ${(myPlayer && myPlayer.freeRollsRemaining) || 0} free rolls`, 
                 'info'
             );
             
@@ -1032,14 +1056,27 @@
         }
         
         function updatePlayersDisplay() {
-            if (!room || !room.state) return;
+            if (!room || !room.state || !room.state.players) return;
             
             const isGame = room.state.status === 'in_progress';
             const targetDiv = isGame ? 'playersGame' : 'playersInfo';
             const playersDiv = document.getElementById(targetDiv);
             playersDiv.innerHTML = '';
             
-            room.state.players.forEach((player, sessionId) => {
+            const players = room.state.players;
+            const iteratePlayers = (cb) => {
+                // MapSchema-like
+                if (players && typeof players.forEach === 'function') {
+                    players.forEach((p, k) => cb(p, k));
+                    return;
+                }
+                // Plain object fallback
+                if (players && typeof players === 'object') {
+                    Object.entries(players).forEach(([k, p]) => cb(p, k));
+                }
+            };
+
+            iteratePlayers((player, sessionId) => {
                 const card = document.createElement('div');
                 card.className = 'player-card';
                 
@@ -1141,22 +1178,43 @@
             });
             
             if (isGame) {
-                const myPlayer = room.state.players.get(mySessionId);
-                document.getElementById('rollBtn').disabled = myPlayer.freeRollsRemaining <= 0;
+                let myPlayer = null;
+                if (players && typeof players.get === 'function') {
+                    myPlayer = players.get(mySessionId);
+                } else if (players && typeof players === 'object') {
+                    myPlayer = players[mySessionId] || null;
+                }
+                const rollBtn = document.getElementById('rollBtn');
+                if (myPlayer && rollBtn) {
+                    rollBtn.disabled = (myPlayer.freeRollsRemaining || 0) <= 0;
+                }
             }
         }
         
         // Players are auto-ready on join; no manual ready action
         
         function performRoll() {
-            if (!room) return;
-            const myPlayer = room.state.players.get(mySessionId);
-            if (myPlayer.freeRollsRemaining <= 0) {
+            console.log('performRoll called');
+            if (!room) { log('Not connected to room.', 'error'); return; }
+            let myPlayer = null;
+            if (room.state && room.state.players) {
+                const players = room.state.players;
+                if (typeof players.get === 'function') {
+                    myPlayer = players.get(mySessionId);
+                } else if (typeof players === 'object') {
+                    myPlayer = players[mySessionId] || null;
+                }
+            }
+            if (myPlayer && (myPlayer.freeRollsRemaining || 0) <= 0) {
                 log('No free rolls remaining!', 'error');
                 return;
             }
-            room.send("roll", {});
-            log('Rolling...', 'info');
+            try {
+                room.send("roll", {});
+                log('Rolling...', 'info');
+            } catch (e) {
+                log(`Failed to send roll: ${e.message}`, 'error');
+            }
         }
         
         function getRarityColor(rarity) {
