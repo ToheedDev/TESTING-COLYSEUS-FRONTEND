@@ -830,6 +830,12 @@
                 if (data.jackpot) {
                     log(`🎰 JACKPOT! ${data.jackpotAmount} points!`, 'success');
                 }
+                // Optional: log acting user's rank if provided inside userGameState
+                if (data.userGameState && typeof data.userGameState.rank === 'number') {
+                    const r = data.userGameState.rank;
+                    const suffix = r === 1 ? 'st' : r === 2 ? 'nd' : r === 3 ? 'rd' : 'th';
+                    log(`🏆 ${data.username} is now ${r}${suffix}`, 'info');
+                }
                 
                 // Check for new item (only for our own rolls)
                 if (data.sessionId === mySessionId && data.userGameState) {
@@ -903,6 +909,11 @@
             room.onMessage("waiting_timer_started", (data) => {
                 log(`⏰ 30-second timer started! Current players: ${data.currentPlayers}`, 'info');
                 startCountdownTimer(data.duration, data.currentPlayers);
+            });
+
+            room.onMessage("game_ready", (data) => {
+                log(`✅ Game is ready to start! Players: ${data.currentPlayers}`, 'success');
+                showNotification('✅ Game is ready! Get set...', 'success');
             });
 
             // Bot-specific event handlers
@@ -1121,7 +1132,18 @@
                 }
                 
                 if (isGame) {
+                    // Get rank display text with appropriate styling
+                    const getRankDisplay = (rank) => {
+                        const rankText = `${rank}${rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th'}`;
+                        const rankColor = rank === 1 ? '#FFD700' : rank === 2 ? '#C0C0C0' : rank === 3 ? '#CD7F32' : '#666';
+                        return `<span style="color: ${rankColor}; font-weight: bold; font-size: 1.1em;">${rankText}</span>`;
+                    };
+
                     html += `
+                        <div class="stat">
+                            <span class="stat-label">🏆 Rank:</span>
+                            <span class="stat-value">${getRankDisplay(player.rank || player.seat)}</span>
+                        </div>
                         <div class="stat">
                             <span class="stat-label">Free Rolls:</span>
                             <span class="stat-value">${player.freeRollsRemaining}/${room.state.freeRollsPerPlayer}</span>

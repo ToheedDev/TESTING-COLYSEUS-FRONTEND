@@ -12,6 +12,65 @@
  - [Bots](#bots)
 ---
 
+# Updates: Rank field and Game Ready event
+
+## Player ranking (rank)
+
+- Each PlayerState now includes a numeric `rank`.
+- Rank defaults to the player's seat on join and is updated dynamically based on `pointsEarnedThisMatch` (higher points → better rank).
+
+Example PlayerState (addition):
+
+```json
+{
+  "username": "PlayerName",
+  "seat": 1,
+  "pointsEarnedThisMatch": 250,
+  "rank": 1
+}
+```
+
+## roll_result includes rank (per-actor)
+
+Every `roll_result` message embeds the acting user's `rank` inside `userGameState` as `userGameState.rank`.
+
+- This rank is computed by the Colyseus room and included only in the outbound message for convenience.
+- It is not written back to Django or stored in the persistent user game state.
+- For a full leaderboard, use `room.state.players` and read each `player.rank` (or sort by `pointsEarnedThisMatch`).
+
+```json
+{
+  "sessionId": "abc123",
+  "username": "PlayerName",
+  "rollValue": 5,
+  "userGameState": { /* ... other fields ... */, "rank": 1 },
+  "balance": 1500,
+  "freeRollsRemaining": 15,
+  "pointsEarnedThisMatch": 250,
+  // rank is inside userGameState; no top-level rank field
+}
+```
+
+Use `data.userGameState.rank` to show the acting user's position. To render a complete leaderboard, read `room.state.players` and either sort by `pointsEarnedThisMatch` or use each player's `rank` from state.
+
+## New server event: game_ready
+
+The server emits `game_ready` immediately before the match starts in two cases:
+
+- When the lobby timer reaches zero and there are at least 2 players.
+- When 4 players join (instant start).
+
+Payload shape:
+
+```json
+{
+  "currentPlayers": 2,
+  "prizePoolPoints": 20
+}
+```
+
+Recommended UI action: transition from a "waiting" to a "ready" state just before `game_started` is received.
+
 ## Overview
 
 The YGG Games multiplayer system enables real-time competitive gameplay where multiple players participate in the same game session simultaneously. The system uses a three-tier architecture:
