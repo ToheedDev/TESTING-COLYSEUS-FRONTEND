@@ -590,6 +590,34 @@
             <div class="controls">
                 <button onclick="disconnectRoom()">Leave Room</button>
             </div>
+            <!-- Avatar Selection (Waiting Phase Only) -->
+            <div class="section" id="avatarSelectionSection" style="display: none; margin-top: 15px;">
+                <h3>🎭 Select Avatar (Waiting Phase)</h3>
+                <p style="margin-bottom:10px;">Load your active avatars for this game and pick one below, or enter manually.</p>
+                <div class="controls" style="margin-bottom:10px;">
+                    <button onclick="loadGameAvatarsForUser()">Load My Avatars for This Game</button>
+                </div>
+                <div id="avatarListGrid" class="players-grid" style="margin-bottom: 15px;"></div>
+                <div class="form-group">
+                    <label>Avatar Code</label>
+                    <input type="text" id="avatarCodeInput" placeholder="e.g., G001ACSB" />
+                </div>
+                <div class="form-group">
+                    <label>NFT Category</label>
+                    <select id="avatarNftCategory">
+                        <option value="">free/default</option>
+                        <option value="minted">minted</option>
+                        <option value="game_pass">game_pass</option>
+                        <option value="free">free</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Item ID (optional)</label>
+                    <input type="text" id="avatarItemId" placeholder="Item/NFT id if required" />
+                </div>
+                <button id="changeAvatarBtn" onclick="changeAvatarFromUI()">Change Avatar</button>
+                <p><small><em>Note: Only works before the game starts. Everyone will see your new avatar instantly.</em></small></p>
+            </div>
         </div>
         
         <!-- Game Section -->
@@ -713,7 +741,6 @@
                     const msg = (respBody && (respBody.message || respBody.error || respBody.detail)) || 'Failed to initialize';
                     throw new Error(msg);
                 }
-
                 matchData = respBody.result || respBody; // supports both wrapped and raw
                 log(`Match initialized: ${matchData.match_id}`, 'success');
                 log(`Prize pool: ${matchData.prize_pool_points} points`, 'info');
@@ -809,6 +836,9 @@
                 log(`Prize pool: ${data.prizePoolPoints} points`, 'info');
                 log(`Max duration: ${data.maxDuration / 1000}s`, 'info');
                 showGame();
+                // Hide avatar selection when game starts
+                const avSec = document.getElementById('avatarSelectionSection');
+                if (avSec) avSec.style.display = 'none';
                 const totalSeconds = Math.max(0, Math.ceil((data.maxDuration || 0) / 1000));
                 if (totalSeconds > 0) {
                     startGameTimer(totalSeconds);
@@ -909,6 +939,16 @@
             room.onMessage("waiting_timer_started", (data) => {
                 log(`⏰ 30-second timer started! Current players: ${data.currentPlayers}`, 'info');
                 startCountdownTimer(data.duration, data.currentPlayers);
+                // Show avatar selection while waiting
+                const avSec = document.getElementById('avatarSelectionSection');
+                if (avSec) avSec.style.display = 'block';
+            });
+
+            // Receive avatar change broadcasts
+            room.onMessage("avatar_changed", (data) => {
+                log(`🎭 Avatar changed: ${data.username} -> ${data.avatarAssetKey} (${data.avatarRarity})`, 'success');
+                // Refresh players display to reflect new avatar fields
+                updatePlayersDisplay();
             });
 
             room.onMessage("game_ready", (data) => {
@@ -1250,6 +1290,108 @@
                 'mythic': '#F44336'
             };
             return colors[rarityLower] || colors['common'];
+        }
+        
+        // Load user's avatars for the current game (UserMintedNFTS.list with ?id=<gameId>)
+        async function loadGameAvatarsForUser() {
+            try {
+                const backendUrl = document.getElementById('backendUrl').value;
+                const authToken = document.getElementById('authToken').value;
+                const gameId = document.getElementById('gameId').value;
+                if (!backendUrl || !authToken || !gameId) {
+                    log('Backend URL, Auth Token, and Game ID are required to load avatars', 'error');
+                    return;
+                }
+
+                const url = `${backendUrl}/user/api/v1/user-nft/?id=${encodeURIComponent(gameId)}`;
+                log('Loading your avatars for this game...', 'info');
+                const res = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const body = await res.json();
+                const list = Array.isArray(body?.data) ? body.data : (Array.isArray(body?.result) ? body.result : (Array.isArray(body) ? body : []));
+                renderAvatarList(list);
+                if (!Array.isArray(list) || list.length === 0) {
+                    log('No avatars found for this game (or wallet not active).', 'error');
+                } else {
+                    log(`Loaded ${list.length} avatars for this game.`, 'success');
+                }
+            } catch (e) {
+                log(`Failed to load avatars: ${e.message}`, 'error');
+            }
+        }
+
+        function renderAvatarList(avatars) {
+            const grid = document.getElementById('avatarListGrid');
+            if (!grid) return;
+            grid.innerHTML = '';
+            if (!Array.isArray(avatars) || avatars.length === 0) { return; }
+            avatars.forEach((av) => {
+                const props = av.properties || {};
+                const meta = props.meta_data || {};
+                const code = props.avatar_code || av.avatar_code || av.avatar_assets || '';
+                const rarity = props.rarity || av.rarity || 'Common';
+                const category = av.nft_category || av.category || '';
+                const itemId = av.item_id || av.id || '';
+
+                const card = document.createElement('div');
+                card.className = 'player-card';
+                card.innerHTML = `
+                    <h3>${meta.name || code}</h3>
+                    <div class="stat"><span class="stat-label">Code:</span><span class="stat-value">${code}</span></div>
+                    <div class="stat"><span class="stat-label">Rarity:</span><span class="stat-value" style="color:${getRarityColor(rarity)};font-weight:bold;">${rarity}</span></div>
+                    <div class="stat"><span class="stat-label">Category:</span><span class="stat-value">${category || 'free/default'}</span></div>
+                    ${meta.image ? `<div style="margin:8px 0;"><img src="${meta.image}" alt="${meta.name || code}" style="max-width:100%;border-radius:8px;"/></div>` : ''}
+                    <div class="controls"><button onclick="selectAvatarFromList('${code}','${category}','${itemId}')">Use This Avatar</button></div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function selectAvatarFromList(code, category, itemId) {
+            try {
+                const codeInput = document.getElementById('avatarCodeInput');
+                const catSelect = document.getElementById('avatarNftCategory');
+                const itemInput = document.getElementById('avatarItemId');
+                if (codeInput) codeInput.value = code || '';
+                if (catSelect) catSelect.value = category || '';
+                if (itemInput) itemInput.value = itemId || '';
+                changeAvatarFromUI();
+            } catch (e) {
+                log(`Failed to select avatar: ${e.message}`, 'error');
+            }
+        }
+
+        // Trigger avatar change via Colyseus during waiting phase
+        function changeAvatarFromUI() {
+            if (!room) { log('Not connected to room.', 'error'); return; }
+            try {
+                const status = room.state && room.state.status;
+                if (status !== 'waiting') {
+                    log('Avatar can only be changed during waiting phase.', 'error');
+                    return;
+                }
+            } catch (e) { /* no-op */ }
+
+            const avatarCode = document.getElementById('avatarCodeInput')?.value?.trim();
+            const nftCategory = document.getElementById('avatarNftCategory')?.value || '';
+            const itemId = document.getElementById('avatarItemId')?.value?.trim();
+
+            if (!avatarCode) {
+                log('Please enter Avatar Code.', 'error');
+                return;
+            }
+
+            const payload = { avatar_code: avatarCode };
+            if (nftCategory) payload['nft_category'] = nftCategory;
+            if (itemId) payload['item_id'] = itemId;
+
+            try {
+                room.send('change_avatar', payload);
+                log(`Requesting avatar change to ${avatarCode} (${nftCategory || 'free/default'})`, 'info');
+            } catch (e) {
+                log(`Failed to send change_avatar: ${e.message}`, 'error');
+            }
         }
         
         function displayRollActivity(data) {
