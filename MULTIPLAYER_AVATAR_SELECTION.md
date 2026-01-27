@@ -72,30 +72,6 @@ room.onMessage('error', (message) => {
 });
 ```
 
-### 4. Display Player Avatars in Lobby
-```javascript
-// When room state updates
-room.state.players.onAdd = (player, sessionId) => {
-  // Display player with their current avatar
-  displayPlayer(player.seat, {
-    username: player.username,
-    avatarAssetKey: player.avatarAssetKey,
-    avatarRarity: player.avatarRarity,
-    avatarMovement: player.avatarMovement
-  });
-};
-
-// Listen for player avatar changes
-room.state.players.onChange = (player, sessionId) => {
-  // Update the player's displayed avatar
-  updatePlayerAvatar(player.seat, {
-    assetKey: player.avatarAssetKey,
-    rarity: player.avatarRarity,
-    movement: player.avatarMovement
-  });
-};
-```
-
 ## Colyseus Events
 
 ### Send to Server
