@@ -3,17 +3,36 @@
 ## Overview
 During the 60-second waiting phase, players can select avatars and see each other's selections in real-time via Colyseus.
 
+**NEW: Cross-Game Avatar Support**
+In multiplayer mode, users can select ANY avatar from ANY game they own. The avatar is no longer restricted to the current game being played. This allows players to use their favorite avatars across all multiplayer maps.
+
 ### Colyseus Server
 - **Message Handler**: `change_avatar` - Processes avatar changes during waiting phase
 - **Broadcast Event**: `avatar_changed` - Notifies all players of avatar changes
 
 ## Frontend Integration
 
-### 1. Get User's Available Avatars (for a specific game)
+### 1. Get User's Available Avatars
+
+**Option A: All Avatars (Recommended for Multiplayer)**
 ```javascript
-// Fetch available avatars for the current game
-// NOTE: correct path is /user/api/v1/user-nft/?id={gameId}
-async function fetchUserAvatars(backendUrl, gameId, userToken) {
+// Fetch ALL available avatars from all games
+// In multiplayer, users can select avatars from any game
+async function fetchUserAvatars(backendUrl, userToken) {
+  const response = await fetch(`${backendUrl}/user/api/v1/user-nft/`, {
+    headers: {
+      'Authorization': `Bearer ${userToken}`
+    }
+  });
+  const data = await response.json();
+  return data.data || data.result || [];
+}
+```
+
+**Option B: Game-Specific Avatars (Optional)**
+```javascript
+// Fetch available avatars for a specific game (if you want to filter UI)
+async function fetchUserAvatarsForGame(backendUrl, gameId, userToken) {
   const response = await fetch(`${backendUrl}/user/api/v1/user-nft/?id=${gameId}`, {
     headers: {
       'Authorization': `Bearer ${userToken}`

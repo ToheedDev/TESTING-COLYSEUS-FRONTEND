@@ -804,6 +804,7 @@
         function setupRoomListeners() {
             room.onStateChange((state) => {
                 log(`State changed: ${state.status}`, 'info');
+                log(`ALL The State is: ${JSON.stringify(state)}`, 'info');
                 // Keep prize pool in sync from authoritative room state
                 try {
                     if (state && typeof state.prizePoolPoints !== 'undefined') {
@@ -1131,12 +1132,14 @@
                 const card = document.createElement('div');
                 card.className = 'player-card';
                 
-                // Parse user game state and config
+                // Parse user game state, config, and abstract user
                 let userGameState = {};
                 let userGameConfig = {};
+                let abstractUser = {};
                 try {
                     userGameState = JSON.parse(player.userGameState || '{}');
                     userGameConfig = JSON.parse(player.userGameConfig || '{}');
+                    abstractUser = JSON.parse(player.abstractUser || '{}');
                 } catch (e) {
                     console.error('Error parsing player data:', e);
                 }
@@ -1152,6 +1155,27 @@
                         <span class="stat-value">${player.ready ? '✅ Ready' : '⏳ Not Ready'}</span>
                     </div>
                 `;
+                
+                // Abstract User info (name and avatar URL from Abstract platform)
+                if (abstractUser && abstractUser.name) {
+                    html += `
+                        <div class="stat">
+                            <span class="stat-label">🌐 Abstract Name:</span>
+                            <span class="stat-value" style="color: #667eea; font-weight: bold;">${abstractUser.name}</span>
+                        </div>
+                    `;
+                    if (abstractUser.overrideProfilePictureUrl) {
+                        html += `
+                            <div class="stat" style="flex-direction: column; align-items: center; padding: 10px 0;">
+                                <span class="stat-label" style="margin-bottom: 8px;">Abstract Avatar:</span>
+                                <img src="${abstractUser.overrideProfilePictureUrl}" 
+                                     alt="${abstractUser.name}'s avatar" 
+                                     style="width: 60px; height: 60px; border-radius: 50%; border: 2px solid #667eea; object-fit: cover;" 
+                                     onerror="this.style.display='none'" />
+                            </div>
+                        `;
+                    }
+                }
                 
                 // Avatar info
                 if (player.avatarAssetKey) {
@@ -1303,7 +1327,7 @@
                     return;
                 }
 
-                const url = `${backendUrl}/user/api/v1/user-nft/?id=${encodeURIComponent(gameId)}`;
+                const url = `${backendUrl}/user/api/v1/user-nft/`;
                 log('Loading your avatars for this game...', 'info');
                 const res = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${authToken}` }
