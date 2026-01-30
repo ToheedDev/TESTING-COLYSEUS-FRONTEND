@@ -952,9 +952,27 @@
                 updatePlayersDisplay();
             });
 
+            // Receive board initialization before game start
+            room.onMessage("board_initialized", (data) => {
+                log('🧩 Board initialized and synced for all players', 'info');
+                try {
+                    console.log('Board initialized payload:', data);
+                } catch (e) { /* no-op */ }
+            });
+
             room.onMessage("game_ready", (data) => {
                 log(`✅ Game is ready to start! Players: ${data.currentPlayers}`, 'success');
-                showNotification('✅ Game is ready! Get set...', 'success');
+                showNotification('✅ Game is ready! Loading game...', 'success');
+                // Simulate client-side loading, then confirm to server
+                setTimeout(() => {
+                    log('⬆️ Sending game_load_finished to server', 'info');
+                    try { room.send('game_load_finished'); } catch (e) { /* no-op */ }
+                }, 500);
+            });
+
+            // Track other players' load confirmations
+            room.onMessage("player_loaded", (data) => {
+                log(`✅ ${data.username} loaded (${data.loadedCount}/${data.totalPlayers})`, 'info');
             });
 
             // Bot-specific event handlers
