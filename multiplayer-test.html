@@ -800,8 +800,15 @@
                     entryPointsCost: matchData.entry_points_cost,
                     prizePoolPoints: matchData.prize_pool_points,
                     freeRollsPerPlayer: matchData.free_rolls,
+                    maxDurationSeconds: matchData.max_duration_seconds,
+                    waitingDurationSeconds: matchData.waiting_duration_seconds,
+                    botJoinLeadSeconds: matchData.bot_join_lead_seconds,
                 });
                 
+
+                console.log("max_duration_seconds:", matchData.max_duration_seconds)
+                console.log("waiting_duration_seconds:", matchData.waiting_duration_seconds)
+                console.log("bot_join_lead_seconds:", matchData.bot_join_lead_seconds)
                 mySessionId = room.sessionId;
                 log(`Connected! Session ID: ${mySessionId}`, 'success');
                 
