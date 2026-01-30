@@ -650,6 +650,21 @@
                 <button id="rollBtn" onclick="performRoll()">Roll Dice 🎲</button>
             </div>
             
+            <!-- DEBUG: Add Item Section -->
+            <div class="debug-section" style="margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 8px;">
+                <h3>🛠️ DEBUG: Add Item</h3>
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <select id="debugItemCode" style="padding: 8px; border-radius: 4px;">
+                        <option value="road_block">Road Block 🚧</option>
+                        <option value="slow">Slow 🐌</option>
+                        <option value="fast">Fast ⚡</option>
+                        <option value="back_to_lol">Back to LOL 🏠</option>
+                        <option value="cheating_roll">Cheating Roll 🎲</option>
+                    </select>
+                    <button onclick="debugAddItem()" style="padding: 8px 16px; background: #ff9800; color: white; border: none; border-radius: 4px; cursor: pointer;">Add Item</button>
+                </div>
+            </div>
+            
             <!-- Roll Activity Feed -->
             <div class="roll-activity">
                 <h3>Recent Rolls</h3>
@@ -973,6 +988,29 @@
             // Track other players' load confirmations
             room.onMessage("player_loaded", (data) => {
                 log(`✅ ${data.username} loaded (${data.loadedCount}/${data.totalPlayers})`, 'info');
+            });
+
+            // DEBUG: Listen for debug item added confirmations
+            room.onMessage("debug_item_added", (data) => {
+                log(`🛠️ DEBUG: Item ${data.itemCode} added to active item slot`, 'success');
+                showNotification(`Debug item added: ${data.itemCode}`, 'success');
+                
+                // Update item display for current player
+                room.state.players.forEach((player, sessionId) => {
+                    if (sessionId === mySessionId) {
+                        try {
+                            const userGameState = JSON.parse(player.userGameState || '{}');
+                            if (userGameState && userGameState.active_item) {
+                                updateItemDisplay(userGameState.active_item);
+                                log(`🎁 Item ${userGameState.active_item.name} now active!`, 'success');
+                            }
+                        } catch (e) {
+                            console.error('Error parsing user game state:', e);
+                        }
+                    }
+                });
+                
+                updatePlayersDisplay();
             });
 
             // Bot-specific event handlers
@@ -1618,6 +1656,21 @@
                 target_data: {}
             });
             log(`Using item: ${itemCode}...`, 'info');
+        }
+        
+        function debugAddItem() {
+            if (!room) {
+                log('Not connected to room.', 'error');
+                return;
+            }
+            
+            const itemCode = document.getElementById('debugItemCode').value;
+            
+            log(`🛠️ DEBUG: Adding ${itemCode} to your active item slot...`, 'info');
+            
+            room.send("debug_add_item", {
+                item_code: itemCode
+            });
         }
         
         function selectCheatingRange(range) {
