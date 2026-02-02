@@ -1201,7 +1201,7 @@
             try {
                 showStatus('claimStatus', '⏳ Claiming reward...', 'info');
                 claimBtn && (claimBtn.disabled = true);
-                const url = `${backendUrl}/game/api/v1/multiplayer/claim?match_id=${encodeURIComponent(matchId)}`;
+                const url = `${backendUrl}/game/api/v1/multiplayer/claim/${encodeURIComponent(matchId)}`;
                 const resp = await fetch(url, {
                     method: 'GET',
                     headers: { 'Authorization': `Bearer ${authToken}` }
