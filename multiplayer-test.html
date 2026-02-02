@@ -690,7 +690,11 @@
             <h2>🏆 Match Results</h2>
             <div id="resultsStatus"></div>
             <div id="resultsPlayers" class="players-grid"></div>
-            <button onclick="location.reload()">New Match</button>
+            <div class="controls" style="margin-top: 15px;">
+                <button id="claimBtn" onclick="claimMultiplayerReward()">Claim Reward</button>
+                <button onclick="location.reload()">New Match</button>
+            </div>
+            <div id="claimStatus" class="status" style="display:none; margin-top:10px;"></div>
         </div>
         
         <!-- Log Section -->
@@ -708,6 +712,7 @@
         let timeRemaining = 0;
         let gameCountdownInterval = null;
         let gameTimeRemaining = 0;
+        let lastMatchId = null; // for claim API
         
         function log(message, type = 'info') {
             const logDiv = document.getElementById('log');
@@ -902,6 +907,8 @@
                 log('🏁 GAME ENDED!', 'success');
                 log(`Winner: ${data.winner.username}`, 'success');
                 log(`Prize awarded: ${data.winner.prizePoolAwarded} points`, 'success');
+                // capture match UUID from server event (fallback to initialized id)
+                try { lastMatchId = data.matchUUID || (matchData && matchData.match_id) || lastMatchId; } catch (e) {}
                 showResults(data);
             });
             
@@ -1168,6 +1175,50 @@
                 `;
                 resultsDiv.appendChild(card);
             });
+
+            // Enable claim button UI (server will validate actual winner on claim)
+            const claimBtn = document.getElementById('claimBtn');
+            if (claimBtn) {
+                claimBtn.disabled = !lastMatchId;
+            }
+        }
+
+        async function claimMultiplayerReward() {
+            const backendUrl = document.getElementById('backendUrl').value;
+            const authToken = document.getElementById('authToken').value;
+            const matchId = lastMatchId || (matchData && matchData.match_id);
+            const claimStatus = document.getElementById('claimStatus');
+            const claimBtn = document.getElementById('claimBtn');
+
+            if (!authToken || !backendUrl) {
+                showStatus('claimStatus', '❌ Please provide Backend URL and Auth Token', 'error');
+                return;
+            }
+            if (!matchId) {
+                showStatus('claimStatus', '❌ Missing match id to claim', 'error');
+                return;
+            }
+            try {
+                showStatus('claimStatus', '⏳ Claiming reward...', 'info');
+                claimBtn && (claimBtn.disabled = true);
+                const url = `${backendUrl}/game/api/v1/multiplayer/claim?match_id=${encodeURIComponent(matchId)}`;
+                const resp = await fetch(url, {
+                    method: 'GET',
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const body = await resp.json().catch(() => ({}));
+                if (!resp.ok || body.success === false) {
+                    const msg = (body && (body.message || body.error || body.detail)) || 'Claim failed';
+                    throw new Error(msg);
+                }
+                const result = body.result || body.data || body;
+                log(`✅ Claimed reward for match ${result.match_id || matchId}: ${result.prize_pool_awarded} points`, 'success');
+                showStatus('claimStatus', `✅ Claimed! Awarded: ${result.prize_pool_awarded} points`, 'success');
+            } catch (e) {
+                log(`Claim error: ${e.message}`, 'error');
+                showStatus('claimStatus', `❌ ${e.message}`, 'error');
+                claimBtn && (claimBtn.disabled = false);
+            }
         }
         
         function updatePlayersDisplay() {
@@ -1485,7 +1536,26 @@
             const feed = document.getElementById('rollActivityFeed');
             if (!feed) return;
             
-            const isMyRoll = data.sessionId === mySessionId;
+            // Normalize fields to support both camelCase and snake_case payloads
+            const isMyRoll = data.sessionId === mySessionId || data.session_id === mySessionId;
+            const username = data.username || data.user_name || 'Player';
+            const avatarAssetKey = data.avatarAssetKey || data.avatar_asset_key;
+            const avatarMovement = data.avatarMovement || data.avatar_movement || 'walk';
+            const avatarRarity = data.avatarRarity || data.avatar_rarity || 'Common';
+
+            let userGameState = data.userGameState || data.user_game_state || {};
+            if (typeof userGameState === 'string') {
+                try { userGameState = JSON.parse(userGameState); } catch (e) { userGameState = {}; }
+            }
+            const previousPosition = userGameState.previous_position ?? userGameState.previousPosition;
+            const currentPosition = userGameState.current_position ?? userGameState.currentPosition;
+            const currentRollValue = (userGameState.current_roll_value ?? userGameState.currentRollValue ?? data.rollValue);
+
+            const balance = data.balance ?? userGameState.total_winning_amount;
+            const pointsEarnedThisMatch = data.pointsEarnedThisMatch ?? data.points_earned_this_match;
+            const freeRollsRemaining = data.freeRollsRemaining ?? userGameState.available_rolls ?? data.available_rolls;
+            const jackpot = !!(data.jackpot ?? userGameState.jackpot);
+            const jackpotAmount = data.jackpotAmount ?? userGameState.jackpot_amount ?? 0;
             const rollItem = document.createElement('div');
             rollItem.className = `roll-item ${isMyRoll ? 'my-roll' : ''}`;
             
@@ -1498,13 +1568,13 @@
                 'Legendary': '#FF9800',
                 'Mythic': '#F44336'
             };
-            const rarityColor = rarityColors[data.avatarRarity] || '#9E9E9E';
+            const rarityColor = rarityColors[avatarRarity] || '#9E9E9E';
             
             let html = `
                 <div class="roll-header">
                     <div class="roll-player">
-                        ${data.username} ${isMyRoll ? '(You)' : ''}
-                        ${data.jackpot ? '<span class="jackpot-indicator">🎰 JACKPOT!</span>' : ''}
+                        ${username} ${isMyRoll ? '(You)' : ''}
+                        ${jackpot ? '<span class="jackpot-indicator">🎰 JACKPOT!</span>' : ''}
                     </div>
                     <div style="font-size: 0.9em; color: #666;">
                         ${new Date().toLocaleTimeString()}
@@ -1514,31 +1584,31 @@
             `;
             
             // Avatar info
-            if (data.avatarAssetKey) {
+            if (avatarAssetKey) {
                 html += `
                     <div class="roll-detail">
                         <span class="roll-detail-label">🎭 Avatar:</span>
                         <span class="avatar-badge" style="background: ${rarityColor}; color: white;">
-                            ${data.avatarAssetKey}
+                            ${avatarAssetKey}
                         </span>
                     </div>
                     <div class="roll-detail">
                         <span class="roll-detail-label">Movement:</span>
-                        <span class="roll-detail-value">${data.avatarMovement}</span>
+                        <span class="roll-detail-value">${avatarMovement ?? '-'}</span>
                     </div>
                 `;
             }
             
             // Game state info
-            if (data.userGameState) {
+            if (userGameState && (previousPosition !== undefined || currentPosition !== undefined || currentRollValue !== undefined)) {
                 html += `
                     <div class="roll-detail">
                         <span class="roll-detail-label">📍 Position:</span>
-                        <span class="roll-detail-value">${data.userGameState.previous_position} → ${data.userGameState.current_position}</span>
+                        <span class="roll-detail-value">${previousPosition ?? '-'} → ${currentPosition ?? '-'}</span>
                     </div>
                     <div class="roll-detail">
                         <span class="roll-detail-label">🎲 Roll Value:</span>
-                        <span class="roll-detail-value">${data.userGameState.current_roll_value}</span>
+                        <span class="roll-detail-value">${currentRollValue ?? '-'}</span>
                     </div>
                 `;
             }
@@ -1547,24 +1617,24 @@
             html += `
                 <div class="roll-detail">
                     <span class="roll-detail-label">💰 Balance:</span>
-                    <span class="roll-detail-value">${data.balance}</span>
+                    <span class="roll-detail-value">${balance ?? '-'}</span>
                 </div>
                 <div class="roll-detail">
                     <span class="roll-detail-label">⭐ Points:</span>
-                    <span class="roll-detail-value">${data.pointsEarnedThisMatch}</span>
+                    <span class="roll-detail-value">${pointsEarnedThisMatch ?? '-'}</span>
                 </div>
                 <div class="roll-detail">
                     <span class="roll-detail-label">🎯 Rolls Left:</span>
-                    <span class="roll-detail-value">${data.freeRollsRemaining}</span>
+                    <span class="roll-detail-value">${freeRollsRemaining ?? '-'}</span>
                 </div>
             `;
             
-            if (data.jackpot) {
+            if (jackpot) {
                 html += `
                     <div class="roll-detail" style="grid-column: 1 / -1;">
                         <span class="roll-detail-label">🎰 Jackpot:</span>
                         <span class="roll-detail-value" style="color: #fda085; font-size: 1.2em;">
-                            ${data.jackpotAmount} points!
+                            ${jackpotAmount} points!
                         </span>
                     </div>
                 `;
