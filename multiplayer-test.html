@@ -879,27 +879,27 @@
                 if (secs > 0) startGameTimer(secs);
             });
             
-            room.onMessage("roll_result", (data) => {
-                // Display in roll activity feed
+            // Personal roll result (sent only to me)
+            room.onMessage("mine_roll_result", (data) => {
                 displayRollActivity(data);
-                
-                // Also log for debugging
-                log(`🎲 ${data.username} rolled! Points: ${data.pointsEarnedThisMatch}`, 'info');
-                if (data.jackpot) {
-                    log(`🎰 JACKPOT! ${data.jackpotAmount} points!`, 'success');
+                log(`🎲 You rolled! Points: ${data.pointsEarnedThisMatch}`, 'info');
+                if (data.userGameState) {
+                    try { checkForNewItem(data.userGameState); } catch (e) { /* no-op */ }
                 }
-                // Optional: log acting user's rank if provided inside userGameState
+                updatePlayersDisplay();
+            });
+
+            // Other players' roll results (server broadcasts to all)
+            room.onMessage("roll_result", (data) => {
+                // Ignore duplicate for my own roll if server also broadcasts to everyone
+                if (data && data.sessionId === mySessionId) return;
+                displayRollActivity(data);
+                log(`� ${data.username} rolled! Points: ${data.pointsEarnedThisMatch}`, 'info');
                 if (data.userGameState && typeof data.userGameState.rank === 'number') {
                     const r = data.userGameState.rank;
                     const suffix = r === 1 ? 'st' : r === 2 ? 'nd' : r === 3 ? 'rd' : 'th';
                     log(`🏆 ${data.username} is now ${r}${suffix}`, 'info');
                 }
-                
-                // Check for new item (only for our own rolls)
-                if (data.sessionId === mySessionId && data.userGameState) {
-                    checkForNewItem(data.userGameState);
-                }
-                
                 updatePlayersDisplay();
             });
             
