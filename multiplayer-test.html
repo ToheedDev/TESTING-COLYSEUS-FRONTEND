@@ -887,6 +887,8 @@
                     try { checkForNewItem(data.userGameState); } catch (e) { /* no-op */ }
                 }
                 updatePlayersDisplay();
+                // Refresh my item card from latest room state
+                try { updateActiveItemCard(); } catch (e) { /* no-op */ }
             });
 
             // Other players' roll results (server broadcasts to all)
@@ -901,6 +903,8 @@
                     log(`🏆 ${data.username} is now ${r}${suffix}`, 'info');
                 }
                 updatePlayersDisplay();
+                // Also update item card in case state changed (e.g., visual sync)
+                try { updateActiveItemCard(); } catch (e) { /* no-op */ }
             });
             
             room.onMessage("game_ended", (data) => {
@@ -1783,16 +1787,12 @@
                 : `⚡ SPEED BOOST! (${duration}s)`;
             document.body.appendChild(indicator);
             
-            // Start countdown timer and notify when expired
+            // Start countdown timer for UI indicator only
+            // Note: Server will auto-clear expired effects on next roll
             effectTimer = setTimeout(() => {
-                // Remove UI indicator
+                // Remove UI indicator when timer ends
                 indicator.remove();
-                
-                // Notify Colyseus that effect has expired
-                if (room) {
-                    room.send('effect_expired', {});
-                    log(`⏱️ ${type} effect expired`, 'info');
-                }
+                log(`⏱️ ${type} effect timer ended (will be cleared by server on next roll)`, 'info');
             }, duration * 1000);
         }
         
@@ -1814,6 +1814,11 @@
         
         // Check for item in roll results
         function checkForNewItem(userGameState) {
+            try {
+                if (typeof userGameState === 'string') {
+                    userGameState = JSON.parse(userGameState);
+                }
+            } catch (e) { /* ignore parse error */ }
             if (userGameState && userGameState.active_item) {
                 const item = userGameState.active_item;
                 log(`🎁 Got new item: ${item.name}!`, 'success');
