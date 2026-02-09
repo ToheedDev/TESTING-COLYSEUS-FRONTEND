@@ -648,6 +648,7 @@
             
             <div class="controls">
                 <button id="rollBtn" onclick="performRoll()">Roll Dice 🎲</button>
+                <button id="finishBtn" onclick="finishGame()">Finish Game ✅</button>
             </div>
             
             <!-- DEBUG: Add Item Section -->
@@ -904,6 +905,16 @@
                 }
                 updatePlayersDisplay();
                 // Also update item card in case state changed (e.g., visual sync)
+                try { updateActiveItemCard(); } catch (e) { /* no-op */ }
+            });
+
+            room.onMessage("player_cleared", (data) => {
+                displayRollActivity(data);
+                log(`✅ ${data.username} finished game. Active effect cleared.`, 'success');
+                log(`✅ ${data.activeEffect} cleared.`, 'success');
+                log(`✅ ${data.userGameState} cleared.`, 'success');
+                console.log('[player_cleared] payload:', data);
+                log("player_cleared event received", 'info');
                 try { updateActiveItemCard(); } catch (e) { /* no-op */ }
             });
             
@@ -1418,6 +1429,17 @@
                 log('Rolling...', 'info');
             } catch (e) {
                 log(`Failed to send roll: ${e.message}`, 'error');
+            }
+        }
+
+        // Notify server that this client has finished the game; clears active effect
+        function finishGame() {
+            if (!room) { log('Not connected to room.', 'error'); return; }
+            try {
+                room.send('player_finished');
+                log('Sent finish notification to server (player_finished).', 'info');
+            } catch (e) {
+                log(`Failed to send player_finished: ${e.message}`, 'error');
             }
         }
         
